@@ -1,0 +1,77 @@
+{
+  "expo": {
+    "name": "GORIDES",
+    "slug": "gorides",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "ca.gorides.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#FFFFFF",
+        "foregroundImage": "./assets/images/adaptive-icon.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "ca.gorides.app",
+      "permissions": [
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.POST_NOTIFICATIONS"
+      ],
+      "runtimeVersion": {
+        "policy": "appVersion"
+      }
+    },
+    "web": {
+      "favicon": "./assets/images/logo.png",
+      "bundler": "metro",
+      "output": "single"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-status-bar",
+      "expo-font",
+      "expo-secure-store",
+      [
+        "@stripe/stripe-react-native",
+        {
+          "enableGooglePay": false
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "GORIDES uses your location to set your pickup point, find rides near you, and share your live position with passengers during an active ride."
+        }
+      ],
+      "expo-notifications",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "GORIDES needs access to your photos to upload pictures of your vehicle."
+        }
+      ]
+    ],
+    "scheme": "gorides",
+    "backgroundColor": "#FAF8F6",
+    "experiments": {
+      "typedRoutes": false
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "0e23402d-2540-4bf7-9b75-444035238152"
+      }
+    },
+    "owner": "kokriweb",
+    "updates": {
+      "url": "https://u.expo.dev/0e23402d-2540-4bf7-9b75-444035238152"
+    }
+  }
+}
