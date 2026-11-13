@@ -1,14 +1,15 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { Image } from 'expo-image';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { goBack } from '../lib/nav';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PlaceSheet } from '../components/Pickers';
 import { Icon, IconName } from '../components/Icon';
 import { Btn, Card, Chip, IconBtn, Row, Screen, Seg, Stepper, T, Toggle, TopBar } from '../components/ui';
-import { DriverVehicle, driverVehicle, rides, vehicles, VehicleModel } from '../lib/api';
+import { ApiRide, bookings, DriverVehicle, driverVehicle, rides, vehicles, VehicleModel } from '../lib/api';
+import { tripDate } from '../lib/rideMap';
 import { distanceKm, Place } from '../lib/geo';
 import { addDays, fmtDay, isoDate, today } from '../lib/format';
 import { useAuth } from '../auth';
@@ -36,6 +37,12 @@ const LUGGAGE: { v: 'none' | 'S' | 'M' | 'L'; label: string; sub: string }[] = [
 
 export default function Publish() {
   const { set, toast, bumpData } = useStore();
+  // /publish?edit=<ride id>: the same steps, filled in from a ride that has no passengers; saving publishes the changed ride and removes the old one
+  const { edit } = useLocalSearchParams<{ edit?: string }>();
+  const editId = edit ? Number(edit) : null;
+  const editing = useRef<ApiRide | null>(null);
+  const keepPrice = useRef<number | null>(null);
+  const [editReady, setEditReady] = useState(!editId);
   const { user } = useAuth();
   const driver = useDriverReady();
   const insets = useSafeAreaInsets();
@@ -118,6 +125,87 @@ export default function Publish() {
   // a local commute is priced per month, so each tap moves it by more than a trip's per-seat price
   const priceStep = local ? 5 : 1;
 
+  // edit mode: load the ride and fill in every step
+  useEffect(() => {
+    if (!editId) return;
+    let live = true;
+    (async () => {
+      try {
+        const [ride, mineBookings] = await Promise.all([rides.get(editId), bookings.mine('driver').catch(() => [])]);
+        if (!live) return;
+        const taken = mineBookings.some((b) => b.ride_id === editId && (b.status === 'pending' || b.status === 'confirmed') && b.instance_status !== 'completed');
+        if (taken) {
+          toast('This ride has passengers, so it can only be edited in part from My rides.');
+          return goBack();
+        }
+        editing.current = ride;
+        // the city is read from each place's own address ("35 Continental Road, Brampton, Ontario L7A 2E9, Canada" -> Brampton), never from the title
+        const cityOf = (address?: string, name?: string) => {
+          const parts = (address ?? '').split(',').map((x) => x.trim()).filter(Boolean);
+          return parts.length >= 3 ? parts[parts.length - 3] : parts[0] || name || '';
+        };
+        const place = (name?: string, address?: string, lat?: string, lng?: string, city?: string): Place => ({ name: name ?? '', address: address ?? name ?? '', city: city ?? '', state: '', country: 'Canada', latitude: Number(lat), longitude: Number(lng) });
+        const fp = place(ride.start_location_name, ride.start_address, ride.start_latitude, ride.start_longitude, cityOf(ride.start_address, ride.start_location_name));
+        const tp = place(ride.end_location_name, ride.end_address, ride.end_latitude, ride.end_longitude, cityOf(ride.end_address, ride.end_location_name));
+        const isLocal = Number(ride.daily_distance_km) > 0;
+        setRideType(isLocal ? 'local' : 'intercity');
+        setFrom(fp.city && fp.city !== fp.name ? `${fp.name}, ${fp.city}` : fp.name);
+        setFromP(fp);
+        setTo(tp.city && tp.city !== tp.name ? `${tp.name}, ${tp.city}` : tp.name);
+        setToP(tp);
+        const parts = (t?: string) => {
+          const [h, m] = (t ?? '07:30').split(':').map(Number);
+          return { hour: h % 12 || 12, min: String(m || 0).padStart(2, '0'), ap: (h >= 12 ? 'PM' : 'AM') as 'AM' | 'PM' };
+        };
+        const first = [...(ride.instances ?? [])].sort((a, b) => (tripDate(a.departure_date) + (a.departure_time ?? '')).localeCompare(tripDate(b.departure_date) + (b.departure_time ?? '')))[0];
+        if (first) {
+          const day = new Date(`${tripDate(first.departure_date)}T00:00:00`);
+          setDate(day.getTime() < today().getTime() ? today() : day);
+          const t = parts(first.departure_time);
+          setHour(t.hour);
+          setMin(t.min);
+          setAp(t.ap);
+        }
+        setRet(!!ride.is_round_trip);
+        if (ride.is_round_trip) {
+          if (isLocal) {
+            const back = (ride.pickup_schedules ?? []).find((p) => p.location_type === 'drop') as ({ pickup_time?: string; return_time?: string } | undefined);
+            const t = parts(back?.return_time ?? back?.pickup_time);
+            setRetHour(t.hour);
+            setRetMin(t.min);
+            setRetAp(t.ap);
+          } else {
+            const back = ride.return_ride?.instances?.[0];
+            if (back) {
+              setRetDate(new Date(`${tripDate(back.departure_date)}T00:00:00`));
+              const t = parts(back.departure_time);
+              setRetHour(t.hour);
+              setRetMin(t.min);
+              setRetAp(t.ap);
+            }
+          }
+        }
+        setSeats(ride.total_seats);
+        keepPrice.current = Number(ride.price_per_seat) || null;
+        setPrice(Number(ride.price_per_seat) || 0);
+        setBag((ride.luggage_size as 'none' | 'S' | 'M' | 'L') ?? 'M');
+        const have = ride.amenities ?? [];
+        setOpts({ instant: ride.booking_mode !== 'request', back: ride.back_seat_max === 2, pets: have.includes('pets'), winter_tires: have.includes('winter_tires'), bikes: have.includes('bikes'), skis_snowboards: have.includes('skis_snowboards') });
+        setNote(ride.description ?? '');
+        const dpw = Number((ride as { days_per_week?: number }).days_per_week);
+        if (dpw === 6) setLocalDays(6);
+        setEditReady(true);
+      } catch (e) {
+        toast(e instanceof Error ? e.message : 'Could not load this ride');
+        goBack();
+      }
+    })();
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editId]);
+
   // fare suggestion once we know the route and vehicle
   useEffect(() => {
     if (!vehicle || !km) return;
@@ -128,7 +216,8 @@ export default function Publish() {
         if (!live) return;
         const v = Math.round(e.suggested_price_per_seat);
         setSuggested(v);
-        setPrice(0); // a new calculation (route, seats, days or return changed) starts the price from the calculated amount again
+        setPrice(keepPrice.current ?? 0);
+        keepPrice.current = null; // a new calculation (route, seats, days or return changed) starts the price from the calculated amount again
       })
       .catch(() => live && setSuggested(null));
     return () => {
@@ -199,13 +288,27 @@ export default function Publish() {
         }
       : {
           ...base,
-          schedules: [{ day_of_week: WEEKDAYS[date.getDay()], departure_time: `${hh}:${min}`, estimated_duration: minutes }],
+          schedules: [{ day_of_week: WEEKDAYS[date.getDay()], start_date: isoDate(date), departure_time: `${hh}:${min}`, estimated_duration: minutes }],
           // the way back is a separate schedule list (the server creates the linked return ride)
-          ...(ret ? { return_schedules: [{ day_of_week: WEEKDAYS[retDate.getDay()], departure_time: `${String(h24(retHour, retAp)).padStart(2, '0')}:${retMin}`, estimated_duration: minutes }] } : {}),
+          ...(ret ? { return_schedules: [{ day_of_week: WEEKDAYS[retDate.getDay()], start_date: isoDate(retDate), departure_time: `${String(h24(retHour, retAp)).padStart(2, '0')}:${retMin}`, estimated_duration: minutes }] } : {}),
         };
     setBusy(true);
     try {
       await rides.publish(body);
+      if (editing.current) {
+        // the changed ride is live; now take the old one (and its linked return ride) down
+        const old = editing.current;
+        try {
+          await rides.remove(old.id);
+          if (old.return_ride?.id) await rides.remove(old.return_ride.id).catch(() => {});
+        } catch {
+          toast('Your changed ride is published, but the old one could not be removed. Delete it from My rides.');
+        }
+        bumpData();
+        toast('Ride updated');
+        router.replace('/my-rides');
+        return;
+      }
       bumpData();
       set({ published: { from: from, to: to, date, time, seats, price: shownPrice } });
       router.replace('/published');
@@ -226,7 +329,7 @@ export default function Publish() {
     return (
       <Screen>
         <StatusBar style="dark" />
-        <TopBar title="Publish a ride" />
+        <TopBar title={editId ? 'Edit ride' : 'Publish a ride'} />
         <SignInPrompt title="Sign in to publish" body="Log in or create an account to offer your empty seats." />
       </Screen>
     );
@@ -236,7 +339,7 @@ export default function Publish() {
   return (
     <Screen>
       <StatusBar style="dark" />
-      <TopBar title="Publish a ride" onBack={() => (step > 0 ? setStep(step - 1) : goBack())} right={<IconBtn name="help" tone="ghost" onPress={() => router.push('/help')} />} />
+      <TopBar title={editId ? 'Edit ride' : 'Publish a ride'} onBack={() => (step > 0 ? setStep(step - 1) : goBack())} right={<IconBtn name="help" tone="ghost" onPress={() => router.push('/help')} />} />
       <View style={styles.prog}>
         {Array.from({ length: STEPS }, (_, i) => (
           <View key={i} style={[styles.progSeg, i <= step && { backgroundColor: C.o }]} />
@@ -543,7 +646,7 @@ export default function Publish() {
             </View>
             <T size={13} color={C.ink2}>
               {local
-                ? 'Local commutes share the trip cost: the cost is split equally between you and every passenger, so a passenger pays less as more people join. GORIDES fees and tax are added at checkout.'
+                ? 'You set the price per seat, starting from the amount calculated for your commute (you can adjust it a little). Every passenger pays exactly this amount per seat, however many others join, plus GORIDES fees and tax shown at checkout.'
                 : 'You set the price per seat. Every passenger pays exactly this amount per seat, however many others join, plus GORIDES fees and tax shown at checkout. Change it up or down from the suggestion as you need.'}
             </T>
             <Row style={styles.earn}>
@@ -565,7 +668,7 @@ export default function Publish() {
 
         {step === 6 ? (
           <>
-            <Head title="Check and publish" sub="You can edit or cancel the ride later from My rides." />
+            <Head title={editId ? 'Check and save' : 'Check and publish'} sub={editId ? 'Saving replaces your ride with these details.' : 'You can edit or cancel the ride later from My rides.'} />
             <Card style={{ padding: 16, gap: 10 }}>
               {[
                 ['Route', `${from} → ${to}`],
@@ -595,7 +698,7 @@ export default function Publish() {
         ) : null}
       </ScrollView>
       <View style={[styles.sticky, { paddingBottom: insets.bottom + 14 }]}>
-        <Btn label={busy ? 'Publishing…' : step === STEPS - 1 ? 'Publish ride' : 'Continue'} onPress={next} disabled={busy} />
+        <Btn label={busy ? (editId ? 'Saving…' : 'Publishing…') : step === STEPS - 1 ? (editId ? 'Save changes' : 'Publish ride') : 'Continue'} onPress={next} disabled={busy || !editReady} />
       </View>
 
       <PlaceSheet visible={picker === 'from'} title="Leaving from" onClose={() => setPicker(null)} onPick={(v, p) => (setFrom(v), setFromP(p))} />

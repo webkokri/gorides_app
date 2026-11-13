@@ -190,10 +190,6 @@ export default function Booking() {
             {(() => {
               const seats = b.seats_booked;
               const share = Number(b.total_price);
-              const perSeat = b.ride_price_per_seat !== undefined ? Number(b.ride_price_per_seat) : NaN;
-              const fixedSeat = b.ride_daily_distance_km !== undefined && !(Number(b.ride_daily_distance_km) > 0);
-              const published = Number.isNaN(perSeat) ? null : perSeat * seats;
-              const diff = published === null ? 0 : share - published;
               const svc = Number(b.service_fee_amount ?? 0);
               const tax = Number(b.gst_hst_amount ?? 0);
               const proc = Number(b.processing_fee_amount ?? 0);
@@ -201,12 +197,7 @@ export default function Booking() {
               if (other.iAmDriver)
                 return (
                   <>
-                    {published !== null ? <PriceLine label={`Your published price · ${seats} seat${seats > 1 ? 's' : ''}`} amount={published} why={`You listed ${money(perSeat)} per seat.`} /> : null}
-                    <PriceLine
-                      label={fixedSeat ? "Passenger's seat price" : "Passenger's cost share"}
-                      amount={share}
-                      why={fixedSeat ? 'This is the price you set per seat. It does not change when other passengers join.' : 'The trip cost is split equally between you and every passenger, so a seat can cost more or less than the published price depending on how many people are on board.'}
-                    />
+                    <PriceLine label={`Passenger's seat price · ${seats} seat${seats > 1 ? 's' : ''}`} amount={share} why="This is the price you set per seat. It does not change when other passengers join." />
                     <T size={12} color={C.muted}>
                       The passenger also paid GORIDES fees and tax on top of this. Those are not taken from the share above. The GORIDES driver service fee is deducted when you are paid out; see Driver earnings.
                     </T>
@@ -214,18 +205,9 @@ export default function Booking() {
                 );
               return (
                 <>
-                  {published !== null ? <PriceLine label={`Seat price published by the driver · ${seats} seat${seats > 1 ? 's' : ''}`} amount={published} why={`The driver listed ${money(perSeat)} per seat.`} /> : null}
-                  {Math.abs(diff) >= 0.01 ? (
-                    <PriceLine
-                      label={diff > 0 ? 'Cost sharing: fewer people on board' : 'Cost sharing: more people on board'}
-                      amount={diff}
-                      minus={diff < 0}
-                      why="The trip cost is split equally between the driver and every passenger, so your share changes as seats fill. If it drops later, the difference is credited to your wallet."
-                    />
-                  ) : null}
-                  <PriceLine label="Your share" amount={share} bold />
+                  <PriceLine label={`Seat price set by the driver · ${seats} seat${seats > 1 ? 's' : ''}`} amount={share} bold why="The driver sets this price per seat. It does not change when other passengers join." />
                   {svc > 0 ? <PriceLine label="GORIDES service fee" amount={svc} why="Paid to GORIDES for secure in-app payment, support and safety. The driver does not receive it." /> : null}
-                  {tax > 0 ? <PriceLine label="GST/HST" amount={tax} why="Sales tax on your share plus the service fee." /> : null}
+                  {tax > 0 ? <PriceLine label="GST/HST" amount={tax} why="Sales tax on the seat price plus the service fee." /> : null}
                   {proc > 0 ? <PriceLine label="Card processing fee" amount={proc} why="Charged by the card payment processor. Wallet payments have no processing fee." /> : null}
                   <PriceLine label="Total charged" amount={charged} bold />
                 </>

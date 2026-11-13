@@ -23,7 +23,9 @@ const duration = (dep: string, arr: string) => {
 };
 
 /** One API ride + one scheduled instance -> the card shape the UI renders. */
-export function toRide(r: ApiRide, inst: ApiInstance): Ride {
+export const SUBSCRIPTION_DAYS = 20;
+
+export function toRide(r: ApiRide, inst: ApiInstance, local = false): Ride {
   const dep = hhmm(inst.departure_time);
   const arr = hhmm(inst.estimated_arrival_time);
   const tags: string[] = [];
@@ -41,6 +43,10 @@ export function toRide(r: ApiRide, inst: ApiInstance): Ride {
     instanceId: inst.id,
     rideId: r.id,
     driverId: r.driver_id,
+    local,
+    monthly: (r.instances ?? []).filter((i) => !i.status || i.status === 'scheduled').length >= SUBSCRIPTION_DAYS,
+    lat: Number(r.start_latitude) || undefined,
+    lng: Number(r.start_longitude) || undefined,
     day: tripDate(inst.departure_date),
     dep,
     arr,
@@ -51,7 +57,7 @@ export function toRide(r: ApiRide, inst: ApiInstance): Ride {
     toS: r.end_address ?? '',
     price: Number(r.price_per_seat),
     tripTotal: Number(r.total_trip_amount) || undefined,
-    fixedPrice: !(Number(r.daily_distance_km) > 0),
+    fixedPrice: true, // every seat costs what the driver set, however many others are on board
     seats: inst.available_seats ?? r.total_seats,
     of: r.total_seats,
     driver: [r.first_name, r.last_name].filter(Boolean).join(' ') || 'Driver',
@@ -62,6 +68,11 @@ export function toRide(r: ApiRide, inst: ApiInstance): Ride {
     car: [[r.vehicle_make, r.vehicle_model].filter(Boolean).join(' '), r.vehicle_color].filter(Boolean).join(' · '),
     instant: r.booking_mode === 'instant',
     pets: !!r.amenities?.includes('pets'),
+    winter: !!r.amenities?.includes('winter_tires'),
+    bikes: !!r.amenities?.includes('bikes'),
+    skis: !!r.amenities?.includes('skis_snowboards'),
+    bag: r.luggage_size && r.luggage_size !== 'none' ? r.luggage_size : undefined,
+    back: r.back_seat_max,
     tags,
     stops,
     description: r.description ?? undefined,
@@ -75,8 +86,25 @@ export function toRide(r: ApiRide, inst: ApiInstance): Ride {
 export function toRides(rs: ApiRide[], local = false): Ride[] {
   return rs.flatMap((r) => {
     const open = (r.instances ?? []).filter((i) => !i.status || !['cancelled', 'completed'].includes(i.status));
-    return (local ? open.slice(0, 1) : open).map((i) => toRide(r, i));
+    return (local ? open.slice(0, 1) : open).map((i) => toRide(r, i, local));
   });
+}
+
+/**
+ * The next trip of each ride that has not started yet (device local time), soonest first. A local commute's first
+ * scheduled day may already be over this morning, so its next day is used instead of dropping the ride.
+ */
+export function upcomingRides(rs: ApiRide[], local: boolean, now = Date.now()): Ride[] {
+  const out: { at: number; ride: Ride }[] = [];
+  for (const r of rs) {
+    const next = (r.instances ?? [])
+      .filter((i) => !i.status || i.status === 'scheduled')
+      .map((i) => ({ i, at: new Date(`${tripDate(i.departure_date)}T${hhmm(i.departure_time) || '00:00'}:00`).getTime() }))
+      .filter((x) => x.at >= now)
+      .sort((a, b) => a.at - b.at)[0];
+    if (next) out.push({ at: next.at, ride: toRide(r, next.i, local) });
+  }
+  return out.sort((a, b) => a.at - b.at).map((x) => x.ride);
 }
 
 /**
@@ -91,6 +119,13 @@ export function seatShare(r: Ride, seats: number) {
     now: (total / (1 + filled + seats)) * seats,
     whenFull: (total / (1 + r.of)) * seats,
   };
+}
+
+/** A trip can be started from an hour before to an hour after its departure time. */
+export const START_GRACE_MS = 60 * 60000;
+export function startWindow(dateIso: string, departure?: string): { opens: Date; at: Date; closes: Date } | null {
+  const w = tripWindow(dateIso, departure);
+  return w ? { opens: new Date(w.start.getTime() - START_GRACE_MS), at: w.start, closes: new Date(w.start.getTime() + START_GRACE_MS) } : null;
 }
 
 /**

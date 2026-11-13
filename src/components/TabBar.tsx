@@ -54,7 +54,7 @@ export function TabBar({ current }: { current: Tab }) {
   );
 }
 
-export const TAB_SPACE = 110;
+export const TAB_SPACE = 160; // the floating bar is 70 tall, sits above the phone's bottom inset, and its centre button rises above it
 
 const styles = StyleSheet.create({
   bar: { position: 'absolute', left: 12, right: 12, height: 70, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.97)', borderWidth: 1, borderColor: C.line, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', shadowColor: '#28140A', shadowOpacity: 0.18, shadowRadius: 20, shadowOffset: { width: 0, height: 12 }, elevation: 12 },

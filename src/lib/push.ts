@@ -23,6 +23,21 @@ Notifications?.setNotificationHandler({
 
 let registeredToken: string | null = null;
 
+/** Asks for the notification permission (once; the system never shows the dialog again after a refusal). No-op in Expo Go. */
+export async function askNotificationPermission() {
+  if (!Notifications) return;
+  try {
+    if (Platform.OS === 'android') {
+      // Android 13+ only shows the permission dialog once a notification channel exists
+      await Notifications.setNotificationChannelAsync('default', { name: 'default', importance: Notifications.AndroidImportance.MAX });
+    }
+    const p = await Notifications.getPermissionsAsync();
+    if (p.status !== 'granted' && p.canAskAgain) await Notifications.requestPermissionsAsync();
+  } catch {
+    // Non-fatal.
+  }
+}
+
 /** Call once the user is signed in. Safe to call repeatedly (e.g. on every app start) -- no-ops if already registered this session. */
 export async function registerForPushNotifications() {
   if (!Notifications || !Device.isDevice) return; // Expo Go, simulators and emulators have no push capability

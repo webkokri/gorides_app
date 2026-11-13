@@ -8,7 +8,8 @@ import { Logo } from '../components/Logo';
 import { Btn, IconBtn, Row, Screen, Seg, T, TopBar } from '../components/ui';
 import { useAuth } from '../auth';
 import { PhoneField } from '../components/PhoneField';
-import { auth as authApi } from '../lib/api';
+import { auth as authApi, driverVehicle } from '../lib/api';
+import { CarPicker, CarValue, EMPTY_CAR } from '../components/CarPicker';
 import { useStore } from '../store';
 import { C, F } from '../theme';
 
@@ -28,6 +29,7 @@ export default function SignIn() {
   const [stage, setStage] = useState<'form' | 'otp'>('form');
   const [otp, setOtp] = useState('');
   const [profileType, setProfileType] = useState<'passenger' | 'driver'>('passenger');
+  const [car, setCar] = useState<CarValue>(EMPTY_CAR);
 
   const run = async (fn: () => Promise<void>) => {
     setBusy(true);
@@ -57,6 +59,12 @@ export default function SignIn() {
     return run(async () => {
       await authApi.verifyOtp(phone.trim(), otp);
       await signUp({ mobile_number: phone.trim(), first_name: first.trim(), last_name: last.trim(), email: email.trim(), password: pass, profile_type: profileType });
+      // a driver's chosen car is saved to their profile right away (it is verified later, with their documents)
+      if (profileType === 'driver' && car.make && car.model) {
+        await driverVehicle
+          .update({ make: car.make.trim(), model: car.model.trim(), year: car.year ? Number(car.year) : undefined, color: car.color.trim() || undefined, license_plate: car.plate.trim() || undefined })
+          .catch(() => {});
+      }
       router.replace('/home');
     });
   };
@@ -114,6 +122,17 @@ export default function SignIn() {
             {field('First name', 'user', { value: first, onChangeText: setFirst, autoCapitalize: 'words' })}
             {field('Last name', 'user', { value: last, onChangeText: setLast, autoCapitalize: 'words' })}
             <PhoneField onChange={setPhone} />
+            {profileType === 'driver' ? (
+              <View style={{ gap: 10 }}>
+                <T w="bold" size={15}>
+                  Your car
+                </T>
+                <T size={13} color={C.muted}>
+                  Choose the car you will drive. You can also do this later in your profile. Our team verifies it before you can publish rides.
+                </T>
+                <CarPicker value={car} onChange={setCar} showPlate />
+              </View>
+            ) : null}
           </>
         ) : null}
         {mode === 'in'

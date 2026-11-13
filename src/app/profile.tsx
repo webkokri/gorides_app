@@ -69,6 +69,7 @@ export default function Profile() {
   const account: Item[] = [
     { icon: 'clock', title: 'History', sub: 'Completed and cancelled rides, bookings and subscriptions', onPress: () => router.push('/history') },
     { icon: 'wallet', title: 'Wallet and refunds', sub: 'Balance, withdrawals', onPress: () => router.push('/wallet') },
+    { icon: 'bank', title: 'Bank accounts', sub: 'For withdrawals, payouts and refunds', onPress: () => router.push('/bank-accounts') },
     { icon: 'car', title: 'Car and documents', sub: 'Plate, photos, registration, insurance', onPress: () => router.push('/vehicle-documents') },
     { icon: 'id', title: 'Driving licence', sub: 'Number, expiry and photos', onPress: () => router.push('/driving-licence') },
     { icon: 'user', title: 'My public profile', sub: 'How passengers and drivers see you', onPress: () => router.push({ pathname: '/user', params: { id: String(user.id), name: fullName } }) },

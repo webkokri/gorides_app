@@ -98,7 +98,7 @@ function refreshSession() {
 
 export const UNAVAILABLE = 'This feature is not available on the server yet.';
 
-async function send<T>(path: string, { method = 'GET', body, query, auth = true }: Opts, retried = false): Promise<T> {
+async function send<T>(path: string, { method = 'GET', body, query, auth = true }: Opts, retried = false, busyTries = 0): Promise<T> {
   if (auth && !token) {
     if (method !== 'GET') onSignedOutAction?.(); // an action, not a background load
     throw new ApiError(SIGNED_OUT, 401);
@@ -120,9 +120,14 @@ async function send<T>(path: string, { method = 'GET', body, query, auth = true 
     throw new ApiError('Network error. Check your connection.', 0);
   }
   if (res.status === 429) {
+    // The server is momentarily busy: quietly wait a few seconds and try again, so the person never has to see it.
     const wait = Number(res.headers.get('retry-after'));
-    cooldownUntil = Date.now() + (wait > 0 ? wait : 60) * 1000;
-    throw new ApiError('Too many requests. Please wait a minute and try again.', 429);
+    if (busyTries < 3) {
+      await new Promise((ok) => setTimeout(ok, Math.min(wait > 0 ? wait : 2, 5) * 1000 * (busyTries + 1)));
+      return send<T>(path, { method, body, query, auth }, retried, busyTries + 1);
+    }
+    cooldownUntil = Date.now() + 15 * 1000; // background loads pause briefly instead of piling on
+    throw new ApiError('The service is busy right now. Please try again in a moment.', 429);
   }
   const json = await res.json().catch(() => null);
   if (res.status === 401 && auth && token && !retried && (await refreshSession())) return send<T>(path, { method, body, query, auth }, true);
@@ -196,6 +201,9 @@ export const rides = {
       per_person_cost: number;
       base_amount: number;
       service_fee_percent: number;
+      gst_hst_percent?: number;
+      stripe_card_percent?: number;
+      stripe_card_fixed_cad?: number;
       by_payment_method: {
         wallet: { service_fee_amount: number; gst_hst_amount: number; processing_fee_amount: number; total_charged: number };
         stripe: { service_fee_amount: number; gst_hst_amount: number; processing_fee_amount: number; total_charged: number };
@@ -252,15 +260,25 @@ export const ratings = {
 export const wallet = {
   get: () => api<{ balance: number; transactions: WalletTx[] }>('/wallet'),
   withdrawals: () => api<Withdrawal[]>('/wallet/withdraw'),
-  withdraw: (amount: number, bank_account_last4: string, notes?: string) => api('/wallet/withdraw', { method: 'POST', body: { amount, payment_method: 'bank_account', bank_account_last4, notes } }),
+  /** `bank_account_id` is one of the person's saved bank accounts (see `bankAccounts`). */
+  withdraw: (amount: number, bank_account_id: number, notes?: string) => api('/wallet/withdraw', { method: 'POST', body: { amount, payment_method: 'bank_account', bank_account_id, notes } }),
   /** Starts a Stripe-only recharge; confirm the returned client_secret with payWithStripe, then the webhook credits the balance. */
   topup: (amount: number) => api<{ stripe_client_secret: string; amount: number }>('/wallet/topup', { method: 'POST', body: { amount } }),
+};
+
+export type BankAccount = { id: number; nickname: string | null; holderName: string; institutionNumber: string; transitNumber: string; last4: string; isDefault: boolean };
+/** The person's saved Canadian bank accounts; the server only ever returns the last 4 digits of the account number. */
+export const bankAccounts = {
+  list: () => api<BankAccount[]>('/bank-accounts'),
+  add: (b: { holder_name: string; institution_number: string; transit_number: string; account_number: string; nickname?: string; is_default?: boolean }) => api<{ id: number }>('/bank-accounts', { method: 'POST', body: b }),
+  makeDefault: (id: number) => api(`/bank-accounts/${id}`, { method: 'PATCH', body: { is_default: true } }),
+  remove: (id: number) => api(`/bank-accounts/${id}`, { method: 'DELETE' }),
 };
 
 export const refunds = {
   list: () => api<RefundRequest[]>('/refund-requests'),
   /** `id` is the refund_requests id, not the booking id. */
-  choose: (id: number, b: { method: 'stripe' } | { method: 'bank_account'; bank_account_holder_name: string; bank_institution_number: string; bank_transit_number: string; bank_account_number: string }) =>
+  choose: (id: number, b: { method: 'stripe' } | { method: 'bank_account'; saved_bank_account_id: number }) =>
     api(`/refund-requests/${id}/choose`, { method: 'POST', body: b }),
 };
 
@@ -283,7 +301,7 @@ export const support = {
 export const drivers = {
   earnings: (period?: 'today' | 'week' | 'month') => api<{ summary: EarningsSummary; earnings: unknown[] }>('/drivers/me/earnings', { query: { period } }),
   payouts: () => api<Payout[]>('/drivers/me/payouts'),
-  requestPayout: (b: { amount: number; payment_method: 'bank_transfer' | 'paypal' | 'stripe' | 'cash'; bank_account_last4?: string; paypal_email?: string; notes?: string }) =>
+  requestPayout: (b: { amount: number; payment_method: 'bank_transfer' | 'paypal' | 'stripe' | 'cash'; bank_account_id?: number; bank_account_last4?: string; paypal_email?: string; notes?: string }) =>
     api('/drivers/me/payouts', { method: 'POST', body: b }),
 };
 
@@ -336,7 +354,7 @@ async function uploadFile<T>(path: string, file: PickedFile, fields: Record<stri
   } catch {
     // not JSON (e.g. a proxy error page)
   }
-  if (result.status === 429) throw new ApiError('Too many requests. Please wait a minute and try again.', 429);
+  if (result.status === 429) throw new ApiError('The service is busy right now. Please try again in a moment.', 429);
   if (result.status < 200 || result.status >= 300 || json?.success === false) {
     throw new ApiError(json?.error || (result.status === 413 ? 'That file is too large.' : `Upload failed (${result.status})`), result.status);
   }
@@ -481,6 +499,8 @@ export type ApiRide = {
   driver_rating?: number | null;
   driver_rating_count?: number;
   driver_completed_rides?: number;
+  /** on a return ride this is the id of its outbound ride; on an outbound ride it is the id of its return ride */
+  return_ride_id?: number | null;
   instances?: ApiInstance[];
   pickup_schedules?: PickupSchedule[];
   // Present on the outbound leg of a round trip -- the linked return

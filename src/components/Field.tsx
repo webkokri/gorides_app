@@ -1,15 +1,26 @@
-import React from 'react';
-import { StyleSheet, TextInput, TextInputProps, View } from 'react-native';
+import React, { useContext, useRef } from 'react';
+import { StyleSheet, TextInput, TextInputProps, View, ViewInstance } from 'react-native';
 import { C, F } from '../theme';
-import { T } from './ui';
+import { SheetScrollContext, T } from './ui';
 
-export function Field({ label, ...props }: TextInputProps & { label: string }) {
+export function Field({ label, onFocus, ...props }: TextInputProps & { label: string }) {
+  const box = useRef<ViewInstance>(null);
+  const reveal = useContext(SheetScrollContext);
   return (
-    <View style={{ gap: 6 }}>
+    <View ref={box} collapsable={false} style={{ gap: 6 }}>
       <T w="bold" size={13} color={C.ink2}>
         {label}
       </T>
-      <TextInput placeholderTextColor="#A9A4AD" autoCapitalize="none" {...props} style={[styles.input, props.style]} />
+      <TextInput
+        placeholderTextColor="#A9A4AD"
+        autoCapitalize="none"
+        {...props}
+        onFocus={(e) => {
+          reveal?.(box.current);
+          onFocus?.(e);
+        }}
+        style={[styles.input, props.style]}
+      />
     </View>
   );
 }

@@ -19,10 +19,6 @@ export type AppState = {
   from: string;
   to: string;
   date: Date;
-  localFrom: string;
-  localTo: string | null;
-  localDate: Date;
-  localTrips: number; // round trips per month, 1 to 30
   ride: Ride | null;
   seats: number;
   booked: Booking | null;
@@ -31,20 +27,14 @@ export type AppState = {
   // coordinates for the labels above; when absent the label is geocoded at search time
   fromPlace: Place | null;
   toPlace: Place | null;
-  localFromPlace: Place | null;
-  localToPlace: Place | null;
 };
 
 const initial: AppState = {
   mode: 'local',
   pax: 1,
-  from: 'Toronto, ON',
-  to: 'Ottawa, ON',
+  from: '',
+  to: '',
   date: addDays(today(), 1),
-  localFrom: '',
-  localTo: null,
-  localDate: addDays(today(), 1),
-  localTrips: 20,
   ride: null,
   seats: 1,
   booked: null,
@@ -52,8 +42,6 @@ const initial: AppState = {
   chatWith: 'driver',
   fromPlace: null,
   toPlace: null,
-  localFromPlace: null,
-  localToPlace: null,
 };
 
 export type Broadcast = { instanceId: number | null; lastAt: number; error: string };
@@ -130,4 +118,4 @@ export function useStore() {
   return c;
 }
 
-export const paxLabel = (s: AppState) => (s.mode === 'local' ? `${s.pax} rider${s.pax > 1 ? 's' : ''}` : `${s.pax} passenger${s.pax > 1 ? 's' : ''}`);
+export const paxLabel = (s: AppState) => `${s.pax} passenger${s.pax > 1 ? 's' : ''}`;

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleProp, StyleSheet, Switch, Text, TextProps, TextStyle, useWindowDimensions, View, ViewStyle } from 'react-native';
+import { Modal, Pressable, ScrollView, ScrollViewInstance, StyleProp, StyleSheet, Switch, Text, TextProps, TextStyle, useWindowDimensions, View, ViewInstance, ViewStyle } from 'react-native';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { goBack } from '../lib/nav';
@@ -178,10 +178,26 @@ export function Chip({ label, on, icon, onPress }: { label: string; on?: boolean
   );
 }
 
+/** Lets a field inside a Sheet ask for itself to be scrolled into view when the keyboard opens over it. */
+export const SheetScrollContext = React.createContext<((target: ViewInstance | null) => void) | null>(null);
+
 export function Sheet({ visible, title, onClose, children }: { visible: boolean; title: string; onClose: () => void; children: React.ReactNode }) {
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
   const [lift, setLift] = useState(0);
+  const scroller = React.useRef<ScrollViewInstance>(null);
+  const inner = React.useRef<ViewInstance>(null);
+  // after the keyboard has opened and the sheet has resized, scroll the focused field to the top of the visible area
+  const reveal = React.useCallback((target: ViewInstance | null) => {
+    if (!target || !inner.current) return;
+    setTimeout(() => {
+      target.measureLayout(
+        inner.current as ViewInstance,
+        (_x: number, y: number) => scroller.current?.scrollTo({ y: Math.max(0, y - 12), animated: true }),
+        () => {},
+      );
+    }, 350);
+  }, []);
   // the sheet sits above the keyboard (KeyboardSafe pads the modal by the covered amount) and never grows taller than the space left
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -196,8 +212,12 @@ export function Sheet({ visible, title, onClose, children }: { visible: boolean;
               </T>
               <IconBtn name="x" tone="ghost" onPress={onClose} label="Close" />
             </View>
-            <ScrollView contentContainerStyle={{ paddingHorizontal: 20, gap: 12, paddingBottom: 8 }} keyboardShouldPersistTaps="handled">
-              {children}
+            <ScrollView ref={scroller} contentContainerStyle={{ paddingHorizontal: 20, gap: 12, paddingBottom: lift ? 24 : 8 }} keyboardShouldPersistTaps="handled">
+              <SheetScrollContext.Provider value={reveal}>
+                <View ref={inner} collapsable={false} style={{ gap: 12 }}>
+                  {children}
+                </View>
+              </SheetScrollContext.Provider>
             </ScrollView>
           </View>
         </View>

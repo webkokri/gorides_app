@@ -45,12 +45,15 @@ export function TripTabs({
 
   const myBookings = data.asPassenger.filter(want).sort(byDate(dir));
   const passengersOnMine = data.asDriver.filter(want).sort(byDate(dir));
-  // Published rides: newest departure first (descending). Upcoming: by next trip; History: by last trip.
+  // Published rides. Upcoming: the trip that starts soonest on top, then onwards. History: the most recent ride first.
   const myRides = data.published
     .filter((r) => (nextTrips(r, t0).length > 0) !== history)
     .sort((a, b) => {
-      const key = (r: ApiRide) => (history ? lastTrip(r) : tripDate(nextTrips(r, t0)[0].departure_date));
-      return key(b).localeCompare(key(a));
+      const next = (r: ApiRide) => {
+        const i = nextTrips(r, t0)[0];
+        return `${tripDate(i.departure_date)} ${i.departure_time ?? ''}`;
+      };
+      return history ? lastTrip(b).localeCompare(lastTrip(a)) : next(a).localeCompare(next(b));
     });
   const mySubs = data.subs.filter((s) => (s.status === 'active') !== history);
 
@@ -88,7 +91,7 @@ export function TripTabs({
                 <PublishedCard key={r.id} r={r} from={t0} past={history} driverBookings={data.asDriver} onChanged={onReload} />
               ))}
             </Section>
-            <Section title="Passengers on my rides" count={passengersOnMine.length}>
+            <Section title="Passenger bookings on my rides" count={passengersOnMine.length}>
               {passengersOnMine.map((b) => (
                 <BookingCard key={`d${b.id}`} b={b} role="Driver" uid={uid} act={act} onRate={onRate} myGivenRatings={myGivenRatings} />
               ))}

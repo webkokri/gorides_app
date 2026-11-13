@@ -1,16 +1,15 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, Animated, Easing, StyleSheet, View } from 'react-native';
+import { Animated, Easing, Pressable, StyleSheet, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { useAuth } from '../auth';
 import { ApiBooking, ApiRide, bookings, isCoolingDown, rides } from '../lib/api';
 import { t12 } from '../lib/format';
-import { tripDate, tripWindow } from '../lib/rideMap';
+import { START_GRACE_MS, tripDate, tripWindow } from '../lib/rideMap';
 import { dayOf } from '../lib/trips';
 import { useNow } from '../lib/useNow';
 import { useStore } from '../store';
 import { C, glow } from '../theme';
 import { Icon } from './Icon';
-import { StartRouteButton } from './StartRouteButton';
 import { Btn, Row, T } from './ui';
 
 type Trip = { instanceId: number; ride: ApiRide; status: string; start: Date; end: Date; day: string; time: string };
@@ -21,11 +20,10 @@ type Trip = { instanceId: number; ride: ApiRide; status: string; start: Date; en
  */
 export function DriverTripCard() {
   const { user } = useAuth();
-  const { toast, bumpData, dataVersion, broadcast } = useStore();
+  const { dataVersion, broadcast } = useStore();
   const now = useNow(30000);
   const [mine, setMine] = useState<ApiRide[]>([]);
   const [asDriver, setAsDriver] = useState<ApiBooking[]>([]);
-  const [busy, setBusy] = useState(false);
   const [pulse] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
@@ -59,7 +57,7 @@ export function DriverTripCard() {
       .filter((t): t is Trip => !!t),
   );
   const due = trips
-    .filter((t) => t.status === 'in_progress' || (now >= t.start.getTime() - 60 * 60000 && now <= t.end.getTime()))
+    .filter((t) => t.status === 'in_progress' || (now >= t.start.getTime() - START_GRACE_MS && now <= t.start.getTime() + START_GRACE_MS))
     .sort((a, b) => (a.status === 'in_progress' ? -1 : 1) - (b.status === 'in_progress' ? -1 : 1) || a.start.getTime() - b.start.getTime())[0];
 
   if (!user || !due) return null;
@@ -67,27 +65,10 @@ export function DriverTripCard() {
   const passengers = asDriver.filter((b) => b.ride_id === due.ride.id && dayOf(b) === due.day && b.status === 'confirmed');
   const seats = passengers.reduce((n, b) => n + b.seats_booked, 0);
   const running = due.status === 'in_progress';
+  // nobody has booked (not even a request): the whole ride can still be edited, e.g. when the time was missed
+  const anyBooked = asDriver.some((b) => b.ride_id === due.ride.id && (b.status === 'pending' || b.status === 'confirmed'));
   const late = !running && now >= due.start.getTime();
   const route = due.ride.title ?? `${due.ride.start_location_name ?? ''} → ${due.ride.end_location_name ?? ''}`;
-
-  const act = async (kind: 'start' | 'complete') => {
-    setBusy(true);
-    try {
-      if (kind === 'start') await rides.startInstance(due.instanceId);
-      else await rides.completeInstance(due.instanceId);
-      toast(kind === 'start' ? `Trip started. ${passengers.length ? 'Your passengers have been notified.' : ''}` : 'Trip completed.');
-      bumpData();
-    } catch (e) {
-      toast(e instanceof Error ? e.message : 'Something went wrong');
-    } finally {
-      setBusy(false);
-    }
-  };
-  const confirm = (kind: 'start' | 'complete') =>
-    Alert.alert(kind === 'start' ? 'Start this trip?' : 'Complete this trip?', kind === 'start' ? `${passengers.length ? `${passengers.length} confirmed passenger${passengers.length > 1 ? 's' : ''} will be notified and can follow you live.` : 'No passengers are confirmed yet.'}` : 'Live tracking and chat close for everyone on this ride.', [
-      { text: 'Not yet', style: 'cancel' },
-      { text: kind === 'start' ? 'Start trip' : 'Complete trip', onPress: () => act(kind) },
-    ]);
 
   return (
     <View style={styles.wrap}>
@@ -120,13 +101,18 @@ export function DriverTripCard() {
                   : '● Starting to share your location…'}
           </T>
         ) : null}
-        <Btn label={busy ? 'Please wait…' : running ? 'Complete trip' : 'Start trip'} icon={running ? 'check' : 'play'} kind="dark" small disabled={busy} style={{ backgroundColor: '#fff' }} onPress={() => confirm(running ? 'complete' : 'start')} />
-        <Row style={{ gap: 8 }}>
-          <StartRouteButton rideId={due.ride.id} day={due.day} kind="dark" style={{ flex: 1, width: undefined, backgroundColor: 'rgba(255,255,255,0.22)' }} />
-          {passengers[0] ? (
-            <Btn label="Live tracking" icon="pin" kind="dark" small style={{ flex: 1, width: undefined, backgroundColor: 'rgba(255,255,255,0.22)' }} onPress={() => router.push({ pathname: '/tracking', params: { id: String(passengers[0].id) } })} />
-          ) : null}
-        </Row>
+        <Pressable accessibilityRole="button" onPress={() => router.push({ pathname: '/driver-trip', params: { rideId: String(due.ride.id), instanceId: String(due.instanceId), day: due.day } })} style={styles.go}>
+          <Icon name={running ? 'route' : 'play'} size={18} color={C.oDeep} />
+          <T w="bold" size={14} color={C.oDeep}>
+            {running ? 'Open trip' : 'Start trip'}
+          </T>
+        </Pressable>
+        {!running && !anyBooked ? (
+          <Btn label="Edit ride" icon="edit" kind="dark" small style={{ backgroundColor: 'rgba(255,255,255,0.22)' }} onPress={() => router.push({ pathname: '/publish', params: { edit: String(/\(Return\)$/.test(due.ride.title ?? '') && due.ride.return_ride_id ? due.ride.return_ride_id : due.ride.id) } })} />
+        ) : null}
+        {passengers[0] ? (
+          <Btn label="Live tracking" icon="pin" kind="dark" small style={{ backgroundColor: 'rgba(255,255,255,0.22)' }} onPress={() => router.push({ pathname: '/tracking', params: { id: String(passengers[0].id) } })} />
+        ) : null}
       </View>
     </View>
   );
@@ -136,5 +122,6 @@ const styles = StyleSheet.create({
   wrap: { marginHorizontal: 16, marginTop: 14 },
   halo: { position: 'absolute', left: -4, right: -4, top: -4, bottom: -4, borderRadius: 26, backgroundColor: C.o },
   card: { backgroundColor: C.oDeep, borderRadius: 22, padding: 16, gap: 10, ...glow },
+  go: { height: 42, borderRadius: 12, backgroundColor: '#fff', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   ic: { width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.22)', alignItems: 'center', justifyContent: 'center' },
 });

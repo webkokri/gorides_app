@@ -8,7 +8,7 @@ import { ConfirmCancel } from './ConfirmCancel';
 import { EditRideSheet } from './EditRideSheet';
 import { counterpart } from '../lib/booking';
 import { money, t12 } from '../lib/format';
-import { tripDate, tripWindow } from '../lib/rideMap';
+import { startWindow, SUBSCRIPTION_DAYS, tripDate, tripWindow } from '../lib/rideMap';
 import { dayOf, isPast, lastTrip, nextTrips, prettyDay } from '../lib/trips';
 import { useNow } from '../lib/useNow';
 import { useStore } from '../store';
@@ -134,6 +134,7 @@ export function BookingCard({
  */
 export function PublishedCard({ r, from, past, driverBookings, onChanged }: { r: ApiRide; from: string; past: boolean; driverBookings: ApiBooking[]; onChanged?: () => void }) {
   const { toast, bumpData } = useStore();
+  const now = useNow(30000);
   const trips = nextTrips(r, from);
   const first = trips[0];
   const mine = driverBookings.filter((b) => b.ride_id === r.id && b.status !== 'cancelled' && (past || !isPast(b, from)));
@@ -162,30 +163,67 @@ export function PublishedCard({ r, from, past, driverBookings, onChanged }: { r:
     }
   };
 
+  // what kind of ride, and when its next trip is
+  const isLocal = Number(r.daily_distance_km) > 0 || (r.pickup_schedules?.length ?? 0) > 0;
+  const monthly = trips.length >= SUBSCRIPTION_DAYS;
+  const nextBooked = first ? mine.filter((b) => b.ride_instance_id === first.id).reduce((n, b) => n + b.seats_booked, 0) : 0;
+  const win = first ? startWindow(first.departure_date, first.departure_time) : null;
+  const canStart = !past && !!win && !!first && now >= win.opens.getTime() && now <= win.closes.getTime();
+  const [cityA, cityB] = (r.title ?? '').replace(/ \(Return\)$/, '').split(' to ');
+  const fromCity = cityA || r.start_location_name || '';
+  const toCity = cityB || r.end_location_name || '';
+  const status = past ? { label: 'Past', color: C.muted } : underway ? { label: 'In progress', color: C.good } : pending ? { label: `${pending} request${pending > 1 ? 's' : ''}`, color: C.oDeep } : withPassengers ? { label: 'Has passengers', color: C.oDeep } : { label: 'Open', color: C.muted };
+
   return (
-    <Card style={[{ padding: 14, gap: 8 }, tint && { borderWidth: 1.5, ...tint }]}>
-      <Row style={{ justifyContent: 'space-between' }}>
-        <Tag label={past ? 'Past ride' : underway ? 'Trip in progress' : withPassengers ? 'Has passengers' : 'Published ride'} icon="car" tone={past ? 'plain' : underway ? 'g' : 'o'} />
-        {pending ? <Tag label={`${pending} request${pending > 1 ? 's' : ''}`} tone="o" /> : <Tag label={`${r.total_seats} seats`} />}
+    <Card style={[{ padding: 12, gap: 8 }, tint && { borderWidth: 1.5, ...tint }]}>
+      <Row style={{ gap: 6 }}>
+        <Tag label={isLocal ? 'Local' : 'Long route'} icon={isLocal ? 'pin' : 'route'} tone={isLocal ? 'o' : 'plain'} />
+        {monthly && !past ? <Tag label="Monthly" tone="g" /> : null}
+        <View style={{ flex: 1 }} />
+        <T w="bold" size={12} color={status.color}>
+          {status.label}
+        </T>
       </Row>
-      <T w="xbold" size={16}>
-        {r.title ?? `${r.start_location_name ?? ''} → ${r.end_location_name ?? ''}`}
-      </T>
-      <T size={13} color={C.muted}>
-        {!past && first
-          ? `Next: ${prettyDay(tripDate(first.departure_date))}${first.departure_time ? ` · ${t12(first.departure_time.slice(0, 5))}` : ''} · ${trips.length} trip${trips.length > 1 ? 's' : ''} ahead`
-          : `Last trip ${prettyDay(lastTrip(r)) || 'n/a'}`}
-        {` · $${Number(r.price_per_seat)} per seat`}
-      </T>
-      <T size={13} color={withPassengers || underway ? C.ink : C.ink2} w={withPassengers ? 'bold' : 'regular'}>
-        {mine.length} passenger booking{mine.length === 1 ? '' : 's'} on this ride
-      </T>
-      {!past ? (
-        <Row style={{ gap: 8 }}>
-          <Btn small kind="out" icon="edit" label="Edit" style={{ flex: 1, width: undefined }} onPress={() => setEdit(true)} />
-          <Btn small kind="out" label="Delete" style={{ flex: 1, width: undefined }} onPress={() => setConfirmDelete(true)} />
+      <Row style={{ gap: 8 }}>
+        <T w="xbold" size={16} numberOfLines={1} style={{ flex: 1 }}>
+          {fromCity} → {toCity}
+        </T>
+        {!past ? (
+          <>
+            <Pressable style={styles.ico} hitSlop={6} accessibilityLabel="Edit ride" onPress={() => {
+                if (mine.length) return setEdit(true);
+                // a return ride is edited through its outbound ride
+                if (/\(Return\)$/.test(r.title ?? '')) return r.return_ride_id ? router.push({ pathname: '/publish', params: { edit: String(r.return_ride_id) } }) : toast('Edit the outbound ride; its return trip is part of it.');
+                router.push({ pathname: '/publish', params: { edit: String(r.id) } });
+              }}>
+              <Icon name="edit" size={16} color={C.ink2} />
+            </Pressable>
+            <Pressable style={[styles.ico, { backgroundColor: '#FBE9E7' }]} hitSlop={6} accessibilityLabel="Delete ride" onPress={() => setConfirmDelete(true)}>
+              <Icon name="trash" size={16} color={C.bad} />
+            </Pressable>
+          </>
+        ) : null}
+      </Row>
+      <Row style={{ gap: 14 }}>
+        <Row style={{ gap: 5, flex: 1 }}>
+          <Icon name="calendar" size={14} color={C.oDeep} />
+          <T w="semi" size={13} numberOfLines={1} style={{ flexShrink: 1 }}>
+            {!past && first ? `${prettyDay(tripDate(first.departure_date))}${first.departure_time ? ` · ${t12(first.departure_time.slice(0, 5))}` : ''}` : `Last trip ${prettyDay(lastTrip(r)) || 'n/a'}`}
+          </T>
         </Row>
+        <T size={12} color={C.muted}>
+          ${Number(r.price_per_seat)}/seat
+        </T>
+        <T size={12} color={C.muted}>
+          {past ? `${r.total_seats} seats` : `${nextBooked}/${r.total_seats} booked`}
+        </T>
+      </Row>
+      {!past && trips.length > 1 ? (
+        <T size={11} color={C.muted}>
+          {trips.length} trips ahead · {mine.length} passenger booking{mine.length === 1 ? '' : 's'}
+        </T>
       ) : null}
+      {canStart ? <Btn small icon="play" label={underway ? 'Open trip' : 'Start trip'} style={styles.mini} onPress={() => router.push({ pathname: '/driver-trip', params: { rideId: String(r.id), instanceId: String(first!.id), day: tripDate(first!.departure_date) } })} /> : null}
       <EditRideSheet ride={edit ? r : null} onClose={() => setEdit(false)} onSaved={() => (bumpData(), onChanged?.())} />
       <ConfirmCancel
         visible={confirmDelete}
@@ -276,5 +314,7 @@ function RateBody({ rating, setRating, onSubmit }: { rating: RatingDraft; setRat
 }
 
 const styles = StyleSheet.create({
+  mini: { height: 34, borderRadius: 10 },
+  ico: { width: 32, height: 32, borderRadius: 16, backgroundColor: C.chip, alignItems: 'center', justifyContent: 'center' },
   review: { minHeight: 110, borderWidth: 1.5, borderColor: C.line, borderRadius: 14, padding: 12, fontFamily: F.regular, fontSize: 15, color: C.ink, textAlignVertical: 'top', backgroundColor: C.card },
 });

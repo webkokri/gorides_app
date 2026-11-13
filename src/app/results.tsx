@@ -1,15 +1,15 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { router } from 'expo-router';
 import { goBack } from '../lib/nav';
-import { useAuth } from '../auth';
 import { StatusBar } from 'expo-status-bar';
 import { RideCard } from '../components/RideCard';
 import { Icon } from '../components/Icon';
-import { Btn, Card, Chip, IconBtn, Row, Screen, Sheet, T, Toggle } from '../components/ui';
+import { Btn, Card, Chip, IconBtn, Row, Screen, Seg, Sheet, T, Toggle } from '../components/ui';
 import { Ride } from '../data';
 import { rides as ridesApi } from '../lib/api';
 import { geocode } from '../lib/geo';
+import { awayLabel, getHere, Here, kmBetween } from '../lib/here';
+import { useOpenRide } from '../lib/useOpenRide';
 import { toRides } from '../lib/rideMap';
 import { addDays, city, dayShort, fmtDay, isoDate, sameDay, today } from '../lib/format';
 import { paxLabel, useStore } from '../store';
@@ -17,58 +17,67 @@ import { C } from '../theme';
 
 type Filter = 'instant' | 'rated' | 'pets';
 
+type Tab = 'local' | 'long';
+type Found = { key: string; local: Ride[]; long: Ride[]; error: string };
+
 export default function Results() {
-  const { s, set, toast } = useStore();
-  const { user } = useAuth();
-  const local = s.mode === 'local';
-  const [sort, setSort] = useState<'early' | 'cheap'>('early');
+  const { s, set } = useStore();
+  const { open, isOwn } = useOpenRide();
+  const [tab, setTab] = useState<Tab>('local');
+  const [sort, setSort] = useState<'near' | 'early' | 'cheap'>('near');
   const [filters, setFilters] = useState<Set<Filter>>(new Set());
   const [sheet, setSheet] = useState(false);
 
   const [nonce, setNonce] = useState(0);
-  const [res, setRes] = useState<{ key: string; rides: Ride[]; error: string }>({ key: '', rides: [], error: '' });
-  const d = isoDate(local ? s.localDate : s.date);
-  const key = `${local}|${d}|${nonce}`;
+  const [res, setRes] = useState<Found>({ key: '', local: [], long: [], error: '' });
+  const d = isoDate(s.date);
+  const key = `${d}|${nonce}`;
   const loading = res.key !== key;
-  const all = res.rides;
   const error = loading ? '' : res.error;
 
-  // The API searches by coordinates, so typed labels are geocoded first (cached).
-  const fromLabel = local ? s.localFrom : s.from;
-  const toLabel = local ? s.localTo : s.to;
-  const fromPlace = local ? s.localFromPlace : s.fromPlace;
-  const toPlace = local ? s.localToPlace : s.toPlace;
+  // The API searches by coordinates, so typed labels are geocoded first (cached). Both kinds of ride are searched at once.
   useEffect(() => {
     let live = true;
     (async () => {
-      const a = fromPlace ?? (await geocode(fromLabel.replace('', '')));
-      const b = toPlace ?? (toLabel ? await geocode(toLabel) : null);
-      const rs = await ridesApi.search({
-        ride_type: local ? 'local' : 'intercity',
-        date_from: d,
-        date_to: local ? undefined : d, // local commutes run for a month from their start date
-        start_lat: a?.latitude,
-        start_lng: a?.longitude,
-        end_lat: b?.latitude,
-        end_lng: b?.longitude,
-        min_seats_available: s.pax,
-        radius_km: 20,
-      });
-      if (live) setRes({ key, rides: toRides(rs, local), error: '' });
-    })().catch((e) => live && setRes({ key, rides: [], error: e instanceof Error ? e.message : 'Could not load rides' }));
+      const a = s.fromPlace ?? (s.from ? await geocode(s.from) : null);
+      const b = s.toPlace ?? (s.to ? await geocode(s.to) : null);
+      const origin: Here | null = a ?? (await getHere());
+      const base = { start_lat: origin?.latitude, start_lng: origin?.longitude, end_lat: b?.latitude, end_lng: b?.longitude, min_seats_available: s.pax };
+      const [loc, lng] = await Promise.all([
+        // local commutes run for a month from their start date, so they only need a start
+        ridesApi.search({ ...base, radius_km: 20, ride_type: 'local', date_from: d }),
+        // long routes: every trip from the chosen day onwards, so rides on other days can be offered when the chosen day has none
+        ridesApi.search({ ...base, radius_km: 30, ride_type: 'intercity', date_from: d }),
+      ]);
+      // the chosen day's trips, then each ride's next trip on a later day
+      const longAll = toRides(lng, false);
+      const seenRide = new Set<number | undefined>();
+      const longCards = [...longAll.filter((r) => r.day === d), ...longAll.filter((r) => r.day !== d && !seenRide.has(r.rideId) && (seenRide.add(r.rideId), true))];
+      const near = (rs: Ride[]) =>
+        rs.map((r) => {
+          if (!origin || r.lat === undefined || r.lng === undefined) return r;
+          const km = kmBetween(origin, { latitude: r.lat, longitude: r.lng });
+          return { ...r, away: awayLabel(km), awayKm: km };
+        });
+      if (live) setRes({ key, local: near(toRides(loc, true)), long: near(longCards), error: '' });
+    })().catch((e) => live && setRes({ key, local: [], long: [], error: e instanceof Error ? e.message : 'Could not load rides' }));
     return () => {
       live = false;
     };
-  }, [key, local, d, fromLabel, toLabel, fromPlace, toPlace, s.pax]);
+  }, [key, d, s.from, s.to, s.fromPlace, s.toPlace, s.pax]);
 
+  const all = tab === 'local' ? res.local : res.long;
   const rides = useMemo(() => {
     let rs = all;
     if (filters.has('instant')) rs = rs.filter((r) => r.instant);
     if (filters.has('rated')) rs = rs.filter((r) => r.rating >= 4.8);
     if (filters.has('pets')) rs = rs.filter((r) => r.pets);
-    if (sort === 'cheap') rs = [...rs].sort((a, b) => a.price - b.price);
-    return rs;
-  }, [all, filters, sort]);
+    const km = (r: Ride) => r.awayKm ?? Infinity;
+    // trips on the chosen day come first, then trips on later days, soonest day first
+    const dayRank = (r: Ride) => (r.day === d ? '' : r.day ?? '9');
+    const inDay = sort === 'cheap' ? (a: Ride, b: Ride) => a.price - b.price : sort === 'near' ? (a: Ride, b: Ride) => km(a) - km(b) || a.dep.localeCompare(b.dep) : (a: Ride, b: Ride) => a.dep.localeCompare(b.dep);
+    return [...rs].sort((a, b) => dayRank(a).localeCompare(dayRank(b)) || inDay(a, b));
+  }, [all, filters, sort, d]);
 
   const toggle = (f: Filter) =>
     setFilters((prev) => {
@@ -78,8 +87,8 @@ export default function Results() {
       return n;
     });
 
-  const route = local ? `${s.localFrom.replace('', '') || 'Pickup'} → ${s.localTo ?? 'Drop point'}` : `${city(s.from)} → ${city(s.to)}`;
-  const meta = local ? `${fmtDay(s.localDate)} · ${s.localTrips} round trips / month · ${paxLabel(s)}` : `${fmtDay(s.date)} · ${paxLabel(s)}`;
+  const route = `${s.from ? city(s.from) : 'Near you'} → ${s.to ? city(s.to) : 'Anywhere'}`;
+  const meta = `${fmtDay(s.date)} · ${paxLabel(s)}`;
 
   return (
     <Screen bg={C.bg}>
@@ -97,7 +106,7 @@ export default function Results() {
           </Pressable>
           <IconBtn name="filter" onPress={() => setSheet(true)} label="Filters" />
         </Row>
-        {!local ? (
+        {(
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingTop: 12 }}>
             {Array.from({ length: 10 }, (_, i) => addDays(today(), i)).map((d, i) => {
               const on = sameDay(d, s.date);
@@ -113,10 +122,20 @@ export default function Results() {
               );
             })}
           </ScrollView>
-        ) : null}
+        )}
+        <Seg<Tab>
+          value={tab}
+          onChange={setTab}
+          options={[
+            { v: 'local', label: `Local Rides${loading ? '' : ` (${res.local.length})`}`, icon: 'pin' },
+            { v: 'long', label: `Long Routes${loading ? '' : ` (${res.long.length})`}`, icon: 'route' },
+          ]}
+          style={{ marginTop: 12 }}
+        />
       </View>
       <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, padding: 16, paddingBottom: 4 }}>
+          <Chip label="Nearest" icon="pin" on={sort === 'near'} onPress={() => setSort('near')} />
           <Chip label="Earliest" icon="clock" on={sort === 'early'} onPress={() => setSort('early')} />
           <Chip label="Lowest price" on={sort === 'cheap'} onPress={() => setSort('cheap')} />
           <Chip label="Instant booking" icon="bolt" on={filters.has('instant')} onPress={() => toggle('instant')} />
@@ -138,27 +157,23 @@ export default function Results() {
               <Btn label="Retry" kind="sec" small onPress={() => setNonce((n) => n + 1)} />
             </Card>
           ) : rides.length ? (
-            rides.map((r) => (
-              <RideCard
-                key={r.id}
-                ride={r}
-                local={local}
-                isOwn={r.driverId !== undefined && r.driverId === user?.id}
-                onPress={() => {
-                  if (r.driverId !== undefined && r.driverId === user?.id) return toast("This is your own ride. You can't book it from a passenger account. Manage it under My rides.");
-                  if (!r.seats) return toast('This ride is full');
-                  set({ ride: r, seats: Math.min(s.pax, r.seats) });
-                  router.push('/ride');
-                }}
-              />
+            rides.map((r, i) => (
+              <React.Fragment key={r.id}>
+                {r.day !== d && (i === 0 || rides[i - 1].day === d) ? (
+                  <T w="bold" size={13} color={C.muted} style={{ marginTop: i === 0 ? 0 : 8, letterSpacing: 0.6 }}>
+                    {i === 0 ? `NOTHING ON ${fmtDay(s.date).toUpperCase()}. OTHER DAYS` : 'OTHER DAYS'}
+                  </T>
+                ) : null}
+                <RideCard ride={r} local={tab === 'local'} isOwn={isOwn(r)} showDate={r.day !== d} onPress={() => open(r)} />
+              </React.Fragment>
             ))
           ) : (
             <Card style={{ padding: 24, alignItems: 'center', gap: 8 }}>
-              <T w="bold">No rides match these filters</T>
+              <T w="bold">{all.length ? 'No rides match these filters' : tab === 'local' ? 'No local rides found' : 'No long routes found'}</T>
               <T size={14} color={C.muted}>
-                Try removing a filter or picking another day.
+                {all.length ? 'Try removing a filter or picking another day.' : (tab === 'local' ? res.long.length : res.local.length) ? `Try the ${tab === 'local' ? 'Long Routes' : 'Local Rides'} tab, or pick another day.` : 'Try another day or a wider area.'}
               </T>
-              <Btn label="Clear filters" kind="sec" small onPress={() => setFilters(new Set())} />
+              {all.length ? <Btn label="Clear filters" kind="sec" small onPress={() => setFilters(new Set())} /> : null}
             </Card>
           )}
         </View>

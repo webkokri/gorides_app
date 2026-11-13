@@ -10,6 +10,7 @@ import { Figtree_400Regular, Figtree_500Medium, Figtree_600SemiBold, Figtree_700
 import { AuthProvider } from '../auth';
 import { BookingEvents } from '../components/BookingEvents';
 import { TripBroadcaster } from '../components/TripBroadcaster';
+import { askStartupPermissions } from '../lib/here';
 import { StoreProvider } from '../store';
 import { C } from '../theme';
 
@@ -20,6 +21,13 @@ export default function RootLayout() {
   const [loaded] = useFonts({ Baloo2_700Bold, Baloo2_800ExtraBold, Figtree_400Regular, Figtree_500Medium, Figtree_600SemiBold, Figtree_700Bold, Figtree_800ExtraBold });
   useEffect(() => {
     if (loaded) SplashScreen.hideAsync().catch(() => {});
+  }, [loaded]);
+
+  // Location and notification permissions are asked right after the app opens
+  useEffect(() => {
+    if (!loaded) return;
+    const t = setTimeout(() => askStartupPermissions(), 600);
+    return () => clearTimeout(t);
   }, [loaded]);
 
   // Phones stay in portrait; tablets and foldables (shortest side 600dp or more) may rotate and resize freely, as Android's

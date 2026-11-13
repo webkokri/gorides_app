@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Alert } from 'react-native';
 import { Btn, Card, Row, T } from './ui';
 import { rides } from '../lib/api';
-import { StartRouteButton } from './StartRouteButton';
+import { router } from 'expo-router';
 import { useNow } from '../lib/useNow';
 import { useStore } from '../store';
 import { C } from '../theme';
@@ -38,6 +38,8 @@ export default function DriverRideControl({ rideInstanceId, rideId, day = '', in
       { text: action === 'start' ? 'Start trip' : 'Complete trip', onPress: () => run(action) },
     ]);
 
+  const openTrip = () => router.push({ pathname: '/driver-trip', params: { rideId: String(rideId ?? ''), instanceId: String(rideInstanceId), day } });
+
   if (instanceStatus !== 'scheduled' && instanceStatus !== 'in_progress') return null;
 
   const sharing = broadcast.instanceId === rideInstanceId;
@@ -49,10 +51,9 @@ export default function DriverRideControl({ rideInstanceId, rideId, day = '', in
       {instanceStatus === 'scheduled' ? (
         <>
           <T size={13} color={C.muted}>
-            Start the trip when you leave. Every confirmed passenger is notified and can follow you live. Start route opens your maps app with all the pickup points.
+            Start the trip when you leave. Every confirmed passenger is notified and can follow you live. The next screen shows the whole route on a map.
           </T>
-          <Btn label={busy ? 'Starting…' : 'Start trip'} icon="play" small disabled={busy} onPress={() => confirm('start')} />
-          <StartRouteButton rideId={rideId} day={day} kind="out" />
+          <Btn label="Start trip" icon="play" small onPress={openTrip} />
         </>
       ) : (
         <>
@@ -61,7 +62,7 @@ export default function DriverRideControl({ rideInstanceId, rideId, day = '', in
               {sharing ? (broadcast.error ? `● Not sharing: ${broadcast.error}` : ago !== null ? `● Sharing your location · updated ${ago} s ago` : '● Starting to share your location…') : '● Starting to share your location…'}
             </T>
           </Row>
-          <StartRouteButton rideId={rideId} day={day} kind="sec" />
+          <Btn label="Open route" icon="route" kind="sec" small onPress={openTrip} />
           <Btn label={busy ? 'Completing…' : 'Complete trip'} icon="check" kind="out" small disabled={busy} onPress={() => confirm('complete')} />
         </>
       )}

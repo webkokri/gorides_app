@@ -2,6 +2,12 @@ import React from 'react';
 import { SvgXml } from 'react-native-svg';
 
 const IC: Record<string, string> = {
+  snow: '<path d="M12 2v20M4.9 7l14.2 10M19.1 7 4.9 17"/><path d="m9.5 3.5 2.5 2 2.5-2M9.5 20.5l2.5-2 2.5 2"/>',
+  bike: '<circle cx="6" cy="16" r="3.5"/><circle cx="18" cy="16" r="3.5"/><path d="M6 16l4-8h5l3 8M10 8l2 8M14 6h3"/>',
+  ski: '<path d="M4 21 20 3"/><path d="M9 22 22 8"/><path d="M2 16 14 3"/>',
+  trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
+  bank: '<path d="M3 10 12 4l9 6H3zM5 10v8M9 10v8M15 10v8M19 10v8M3 20h18"/>',
+  nav: '<path d="M3 11l19-9-9 19-2-8z"/>',
   search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
   pin: '<path d="M12 21s-7-6.2-7-12a7 7 0 0 1 14 0c0 5.8-7 12-7 12z"/><circle cx="12" cy="9" r="2.5"/>',
   calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/>',

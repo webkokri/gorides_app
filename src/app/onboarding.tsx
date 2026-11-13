@@ -15,7 +15,7 @@ import { C } from '../theme';
 const SLIDES = [
   { key: 'city', eyebrow: 'LOCAL RIDES', title: 'Share the ride, split the cost', body: 'Find people heading your way across town. Pay only for your seat and skip the parking.', ms: 5600 },
   { key: 'pickup', eyebrow: 'EASY PICKUPS', title: 'Your driver comes to you', body: 'Drop a pin, watch your driver pull up, hop in and go. Live tracking the whole way.', ms: 8800 },
-  { key: 'split', eyebrow: 'FAIR SHARE', title: 'One trip cost, split equally', body: 'Everyone in the car pays the same share, driver included. A $152 trip with 4 people is $38 each.', ms: 9000 },
+  { key: 'split', eyebrow: 'FAIR SHARE', title: 'A clear price per seat', body: 'The driver sets the seat price, and every passenger pays the same. Fees and tax are shown before you pay.', ms: 9000 },
   { key: 'video', eyebrow: 'WATCH', title: 'GORIDES in 20 seconds', body: 'Search your route, book a seat and ride together. Here is how a trip works.', ms: 20000 },
 ] as const;
 

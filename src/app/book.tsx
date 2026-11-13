@@ -48,8 +48,8 @@ export default function Book() {
   const isReturnRide = !!detail?.title?.endsWith('(Return)');
   const canRoundTrip = !local && !!detail?.is_round_trip && !!detail?.return_ride?.instances?.length;
   const pays: { method: 'wallet' | 'stripe'; badge: string; bg: string; t: string; s: string }[] = [
-    { method: 'wallet', badge: 'GO', bg: C.o, t: 'GORIDES Wallet', s: balance === null ? 'Checking balance…' : `Balance ${money(balance)}` },
-    ...(stripeSupported ? [{ method: 'stripe' as const, badge: 'CARD', bg: '#1A1F71', t: 'Card or bank debit', s: 'Secure checkout by Stripe' }] : []),
+    { method: 'wallet', badge: 'GO', bg: C.o, t: 'GORIDES Wallet', s: balance === null ? 'Checking balance…' : `Balance ${money(balance)}${quote ? ` · total ${money(quote.by_payment_method.wallet.total_charged * (tripType === 'round_trip' ? 2 : 1))}` : ''}` },
+    ...(stripeSupported ? [{ method: 'stripe' as const, badge: 'CARD', bg: '#1A1F71', t: 'Card or bank debit', s: `Secure checkout by Stripe${quote ? ` · total ${money(quote.by_payment_method.stripe.total_charged * (tripType === 'round_trip' ? 2 : 1))} incl. card fee` : ''}` }] : []),
   ];
   // Pay-after-accept settles via wallet (see /bookings/:id/pay), so quote
   // with wallet math until the passenger actually picks Stripe.
@@ -60,12 +60,12 @@ export default function Book() {
   const gstHst = charge?.gst_hst_amount ?? 0;
   const processingFee = charge?.processing_fee_amount ?? 0;
   const legMultiplier = tripType === 'round_trip' ? 2 : 1;
-  // what the driver listed for these seats, and how the cost-sharing share differs from it (see seatShare)
-  const published = r.price * s.seats * legMultiplier;
-  const sharedDiff = baseShare * legMultiplier - published;
-  const tripTotal = r.tripTotal ?? r.price * r.of;
-  const sharing = 1 + Math.max(0, r.of - r.seats) + s.seats; // the driver plus every seat taken once this booking is in
+  // every seat costs what the driver set; fees and tax come on top
+  const seatPrice = baseShare * legMultiplier;
   const feePercent = quote?.service_fee_percent;
+  const taxPercent = quote?.gst_hst_percent;
+  const cardTotal = quote ? quote.by_payment_method.stripe.total_charged * legMultiplier : null;
+  const walletTotal = quote ? quote.by_payment_method.wallet.total_charged * legMultiplier : null;
   const seatsLabel = ` · ${s.seats} seat${s.seats > 1 ? 's' : ''}${tripType === 'round_trip' ? ' · both legs' : ''}`;
   const total = charge ? charge.total_charged * legMultiplier : share.now * legMultiplier; // falls back to the local estimate while the quote loads
 
@@ -248,31 +248,23 @@ export default function Book() {
           </T>
           <View style={{ gap: 10 }}>
             <PriceLine
-              label={`Seat price published by the driver${seatsLabel}`}
-              amount={published}
-              why={r.fixedPrice ? `The driver set ${money(r.price)} per seat. It stays the same however many passengers join.` : `The driver listed ${money(r.price)} per seat.`}
+              label={`Seat price set by the driver${seatsLabel}`}
+              amount={seatPrice}
+              bold
+              why={`The driver set ${money(r.price)} per seat. It stays the same however many passengers join.`}
             />
-            {Math.abs(sharedDiff) >= 0.01 ? (
-              <PriceLine
-                label={sharedDiff > 0 ? 'Cost sharing: fewer people on board so far' : 'Cost sharing: more people on board'}
-                amount={sharedDiff}
-                minus={sharedDiff < 0}
-                why={`The whole trip costs ${money(tripTotal)} and is split equally between the driver and every passenger. With ${sharing} ${sharing > 1 ? 'people' : 'person'} sharing now, one seat is ${money(share.now / s.seats)}. It goes down as more seats fill (${money(share.whenFull / s.seats)} each when the car is full), and any drop is credited back to your wallet.`}
-              />
-            ) : null}
-            <PriceLine label={`Your share${seatsLabel}`} amount={baseShare * legMultiplier} bold />
             {serviceFee > 0 ? (
               <PriceLine
                 label={`GORIDES service fee${feePercent ? ` (${feePercent}%)` : ''}`}
                 amount={serviceFee * legMultiplier}
-                why="Paid to GORIDES for secure in-app payment, support and safety. It is added on top of your share. The driver does not receive it."
+                why={`${feePercent ? `${feePercent}% of the ${money(seatPrice)} seat price. ` : ''}Paid to GORIDES for secure in-app payment, support and safety. The driver does not receive it.`}
               />
             ) : null}
             {gstHst > 0 ? (
-              <PriceLine label="GST/HST" amount={gstHst * legMultiplier} why="Sales tax on your share plus the service fee, collected on behalf of the government." />
+              <PriceLine label={`GST/HST${taxPercent ? ` (${taxPercent}%)` : ''}`} amount={gstHst * legMultiplier} why={`Sales tax${taxPercent ? ` of ${taxPercent}%` : ''} on the seat price plus the GORIDES service fee (${money(seatPrice + serviceFee * legMultiplier)}), collected on behalf of the government.`} />
             ) : null}
             {processingFee > 0 ? (
-              <PriceLine label="Card processing fee" amount={processingFee * legMultiplier} why="Charged by the card payment processor for card and bank payments. Paying from your GORIDES wallet has no processing fee." />
+              <PriceLine label="Card processing fee" amount={processingFee * legMultiplier} why={`${quote?.stripe_card_percent ? `${quote.stripe_card_percent}% + ${money(quote.stripe_card_fixed_cad ?? 0)} ` : ''}charged by Stripe, the card payment processor, on this payment. It is added so the driver and GORIDES still receive their full amounts. Paying from your GORIDES wallet has no processing fee.`} />
             ) : null}
             <Row style={{ justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: C.line, paddingTop: 10 }}>
               <T w="xbold" size={17}>
@@ -282,17 +274,20 @@ export default function Book() {
                 {money(total)}
               </T>
             </Row>
-            {total - published >= 0.01 ? (
+            {cardTotal !== null && walletTotal !== null && Math.abs(cardTotal - walletTotal) >= 0.01 ? (
               <T size={12} color={C.muted}>
-                Your total is {money(total - published)} more than the published seat price{` for ${s.seats} seat${s.seats > 1 ? 's' : ''}`}: {[
-                  sharedDiff >= 0.01 ? `${money(sharedDiff)} for cost sharing` : '',
+                {quoteMethod === 'wallet' ? `Paying by card instead adds a card processing fee, so the total would be ${money(cardTotal)}.` : `Paying from your GORIDES wallet has no card fee, so the total would be ${money(walletTotal)}.`}
+              </T>
+            ) : null}
+            {total - seatPrice >= 0.01 ? (
+              <T size={12} color={C.muted}>
+                Your total is {money(total - seatPrice)} more than the seat price: {[
                   serviceFee > 0 ? `${money(serviceFee * legMultiplier)} service fee` : '',
                   gstHst > 0 ? `${money(gstHst * legMultiplier)} tax` : '',
                   processingFee > 0 ? `${money(processingFee * legMultiplier)} card fee` : '',
                 ]
                   .filter(Boolean)
-                  .join(', ')}
-                {sharedDiff < -0.01 ? `, less ${money(-sharedDiff)} saved by cost sharing` : ''}.
+                  .join(', ')}.
               </T>
             ) : null}
           </View>
