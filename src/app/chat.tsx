@@ -1,12 +1,12 @@
 import React, { useCallback, useRef, useState } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
-import { useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { Image, Pressable, ScrollView, ScrollViewInstance, StyleSheet, TextInput, View } from 'react-native';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { goBack } from '../lib/nav';
 import { usePolling } from '../lib/poll';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon } from '../components/Icon';
-import { IconBtn, Row, Screen, T } from '../components/ui';
+import { Btn, IconBtn, Row, Screen, T } from '../components/ui';
 import { support, TicketMessage } from '../lib/api';
 import { connectSupportSocket } from '../lib/supportSocket';
 import { useAuth } from '../auth';
@@ -26,9 +26,10 @@ export default function Chat() {
   const { toast } = useStore();
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
-  const scroller = useRef<ScrollView>(null);
+  const scroller = useRef<ScrollViewInstance>(null);
   const [ticketId, setTicketId] = useState<number | null>(id ? Number(id) : null);
   const [subject, setSubject] = useState('Support request');
+  const [ticketStatus, setTicketStatus] = useState('open');
   const [msgs, setMsgs] = useState<Msg[]>([{ id: 'sys-0', from: 'sys', text: 'Tell us what you need help with. Our team will reply here.' }]);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
@@ -40,6 +41,7 @@ export default function Chat() {
     try {
       const t = await support.get(tid);
       setSubject(t.subject);
+      setTicketStatus(t.status ?? 'open');
       const mine = (m: TicketMessage) => m.sender_id === uid;
       (t.messages ?? []).forEach((m) => seenIds.current.add(m.id));
       setMsgs(t.messages?.length ? t.messages.map((m) => ({ id: m.id, from: mine(m) ? 'me' : 'them', text: m.message })) : []);
@@ -102,7 +104,8 @@ export default function Chat() {
       setBusy(false);
     }
   };
-  const thread = { name: 'GORIDES Support', sub: ticketId ? subject : 'New request' };
+  const frozen = !!ticketId && ['resolved', 'closed', 'completed'].includes(ticketStatus);
+  const thread = { name: 'GORIDES Support', sub: ticketId ? `${subject}${frozen ? ' · Closed' : ''}` : 'New request' };
 
   return (
     <Screen>
@@ -133,12 +136,21 @@ export default function Chat() {
             </View>
           ))}
         </ScrollView>
+        {frozen ? (
+          <View style={[styles.input, { paddingBottom: insets.bottom + 12, gap: 8 }]}>
+            <T size={13} color={C.muted} style={{ textAlign: 'center' }}>
+              Our support team closed this conversation, so it can&apos;t be replied to. You can read it any time. Need more help? Start a new chat.
+            </T>
+            <Btn label="Start a new chat" small onPress={() => router.replace('/chat')} />
+          </View>
+        ) : (
         <Row style={[styles.input, { paddingBottom: insets.bottom + 12 }]}>
-          <TextInput value={text} onChangeText={setText} placeholder="Write a message" placeholderTextColor="#A9A4AD" style={styles.field} onSubmitEditing={send} returnKeyType="send" />
-          <Pressable style={[styles.send, busy && { opacity: 0.5 }]} onPress={send} accessibilityLabel="Send">
-            <Icon name="send" color="#fff" />
-          </Pressable>
-        </Row>
+            <TextInput value={text} onChangeText={setText} placeholder="Write a message" placeholderTextColor="#A9A4AD" style={styles.field} onSubmitEditing={send} returnKeyType="send" />
+            <Pressable style={[styles.send, busy && { opacity: 0.5 }]} onPress={send} accessibilityLabel="Send">
+              <Icon name="send" color="#fff" />
+            </Pressable>
+          </Row>
+        )}
       </View>
     </Screen>
   );

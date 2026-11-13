@@ -24,10 +24,14 @@ export type Ride = {
   /** API ride_instance id to book (absent on sample data). */
   instanceId?: number;
   rideId?: number;
+  /** the publishing driver's user id (a driver cannot book their own ride) */
+  driverId?: number;
   /** calendar date of this trip, yyyy-mm-dd */
   day?: string;
   /** whole-trip amount the passengers and driver split (total_trip_amount) */
   tripTotal?: number;
+  /** city-to-city: the driver's own per-seat price is charged as is (local commutes cost-share the trip instead) */
+  fixedPrice?: boolean;
   avatar?: string | null;
   verified?: boolean;
   stops?: { time: string; place: string; sub: string }[];
@@ -43,11 +47,12 @@ export const POPULAR: { from: string; to: string; price: number; time: string; c
 ];
 
 export const FAQ: { cat: string; q: string; a: string }[] = [
-  { cat: 'book', q: 'How do I book a seat?', a: 'Search your route on Home, pick a ride card, check the driver and pickup point, then tap Book. Instant booking rides are confirmed right away.' },
-  { cat: 'pay', q: 'When am I charged?', a: 'Your card is charged when the booking is confirmed. For request rides you are only charged if the driver accepts.' },
-  { cat: 'cancel', q: 'Can I cancel and get a refund?', a: 'Cancel from My rides. It is free up to 24 hours before departure. After that, the service fee is kept.' },
-  { cat: 'pub', q: 'How do I publish a ride as a driver?', a: 'Tap the orange plus button, enter your route, date, seats and price, then publish. You need a verified ID and licence.' },
-  { cat: 'safe', q: 'How does GORIDES keep rides safe?', a: 'Drivers verify ID and licence, everyone is rated after each trip, and you can share your live trip with trusted contacts.' },
-  { cat: 'pay', q: 'How much should I charge per seat?', a: 'We recommend a price range for every route based on distance, fuel and tolls. Prices far above it get fewer bookings.' },
-  { cat: 'acct', q: 'How do I verify my profile?', a: 'Go to Profile and add a government ID. Verification usually takes a few minutes.' },
+  { cat: 'book', q: 'How do I book a seat?', a: 'Search your route on Home, pick a ride, check the driver, their profile and the pickup point, then tap Book. Instant booking rides are confirmed as soon as you pay. For request rides the driver reviews your request first.' },
+  { cat: 'pay', q: 'When am I charged?', a: 'Instant booking rides are paid when you book. For request rides you pay after the driver accepts. Always pay inside the app: payments made outside GORIDES cannot be tracked or protected.' },
+  { cat: 'pay', q: 'What fees are there?', a: 'The trip cost is split equally between everyone in the car, driver included. GORIDES adds a service fee on each passenger share, card and bank payments include a payment processing fee from Stripe, and taxes may apply. The full amount is shown before you pay.' },
+  { cat: 'cancel', q: 'Can I cancel a booking?', a: 'Open the trip from My rides, then Trip details, and use Cancel this booking at the bottom. Refunds follow the policy shown when you booked and the Terms of Service.' },
+  { cat: 'pub', q: 'How do I publish a ride as a driver?', a: 'Add your car details, photos, registration, insurance and driving licence in your profile, then tap the orange plus button, enter your route, date, seats and price, and publish.' },
+  { cat: 'safe', q: 'How can I stay safe?', a: 'Check the driver profile, reviews, car and licence plate before you get in, keep your chat and payment inside GORIDES, and use the SOS button or call 911 in an emergency.' },
+  { cat: 'pub', q: 'How is the price per seat decided?', a: 'The trip cost is shared equally, so each passenger pays less as more people join. When you publish we suggest a price based on distance and your car.' },
+  { cat: 'acct', q: 'How do I update my profile?', a: 'Go to Profile, then Account settings, to change your name, phone number or password.' },
 ];

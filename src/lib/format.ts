@@ -8,7 +8,13 @@ export const today = () => {
   d.setHours(0, 0, 0, 0);
   return d;
 };
-export const addDays = (d: Date, n: number) => new Date(d.getTime() + n * 864e5);
+// calendar days, not 24-hour blocks: on the day the clocks change a day is 23 or 25 hours long, and adding 24 hours then
+// lands on the same date twice (Sun Nov 01 2026 appeared twice in the date lists, which gave duplicate React keys)
+export const addDays = (d: Date, n: number) => {
+  const r = new Date(d);
+  r.setDate(r.getDate() + n);
+  return r;
+};
 export const sameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString();
 
 export function fmtDay(d: Date) {

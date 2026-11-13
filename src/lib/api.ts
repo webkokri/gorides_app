@@ -13,6 +13,12 @@ export const setUnauthorizedHandler = (fn: (() => void) | null) => {
   onUnauthorized = fn;
 };
 
+// A button that needs an account was used while signed out: the app shows "log in first" and opens the login page.
+let onSignedOutAction: (() => void) | null = null;
+export const setSignedOutActionHandler = (fn: (() => void) | null) => {
+  onSignedOutAction = fn;
+};
+
 export async function loadToken() {
   const [t, r] = await Promise.all([getItem(KEY), getItem(RKEY)]);
   token = t;
@@ -51,11 +57,20 @@ export function api<T = any>(path: string, opts: Opts = {}): Promise<T> {
   if (method !== 'GET') return send<T>(path, opts);
   const key = `${opts.auth === false ? 'p' : token ?? ''}|${path}|${JSON.stringify(opts.query ?? {})}`;
   const hit = inflight.get(key);
+  // `at === 0` means still in flight (dedupe concurrent calls to the same
+  // GET); once settled, `at` always becomes a real timestamp below, even
+  // for ttl=0 -- otherwise a ttl=0 ("always fresh") call that already
+  // succeeded once left its entry's `at` stuck at the in-flight sentinel
+  // forever (the old `ttl > 0 && ...` guard never updated it), so `at ===
+  // 0` kept matching and every later call reused that first stale response
+  // for the rest of the app session. Driver/vehicle verification status
+  // was exactly this: it only ever changed after a full app restart, which
+  // is the only thing that clears this in-memory map.
   if (hit && (hit.at === 0 || Date.now() - hit.at < ttl)) return hit.p;
   const p = send<T>(path, opts);
   inflight.set(key, { at: 0, p });
   p.then(
-    () => ttl > 0 && inflight.set(key, { at: Date.now(), p }),
+    () => inflight.set(key, { at: Date.now(), p }),
     () => inflight.delete(key),
   );
   return p;
@@ -84,7 +99,10 @@ function refreshSession() {
 export const UNAVAILABLE = 'This feature is not available on the server yet.';
 
 async function send<T>(path: string, { method = 'GET', body, query, auth = true }: Opts, retried = false): Promise<T> {
-  if (auth && !token) throw new ApiError(SIGNED_OUT, 401);
+  if (auth && !token) {
+    if (method !== 'GET') onSignedOutAction?.(); // an action, not a background load
+    throw new ApiError(SIGNED_OUT, 401);
+  }
   const qs = query
     ? Object.entries(query)
         .filter(([, v]) => v !== undefined && v !== '')
@@ -148,7 +166,12 @@ export const users = {
   deleteAccount: (password: string) => api('/users/account', { method: 'DELETE', body: { password } }),
   registerDeviceToken: (token: string, platform: 'ios' | 'android') => api('/users/device-token', { method: 'POST', body: { token, platform } }),
   unregisterDeviceToken: (token: string) => api('/users/device-token', { method: 'DELETE', body: { token } }),
+  /** Flags another user's profile/behaviour for staff review -- separate from block, which just silences them with no review. */
+  report: (reported_user_id: number, reason: ReportReason, details?: string, booking_id?: number) =>
+    api('/users/report', { method: 'POST', body: { reported_user_id, reason, details, booking_id } }),
 };
+
+export type ReportReason = 'fake_profile' | 'harassment' | 'unsafe_driving' | 'fraud_or_scam' | 'inappropriate_content' | 'other';
 
 export const sos = {
   trigger: (b: { latitude?: number; longitude?: number; booking_id?: number; message?: string }) => api<{ id: number }>('/sos', { method: 'POST', body: b }),
@@ -159,14 +182,32 @@ export const rides = {
     api<ApiRide[]>('/rides/search', { query: q, auth: false, ttl: 30000 }),
   get: (id: number | string) => api<ApiRide>(`/rides/${id}`, { auth: false, ttl: 15000 }),
   mine: () => api<ApiRide[]>('/rides/my-rides'),
+  /** Driver edits their own ride (title, description, seats, price, booking mode...). */
+  update: (id: number, b: Partial<{ title: string; description: string; total_seats: number; price_per_seat: number; booking_mode: 'instant' | 'request'; luggage_size: string; back_seat_max: number; amenities: string[]; vehicle_make: string; vehicle_model: string; vehicle_year: number | null; vehicle_color: string; license_plate: string }>) =>
+    api(`/rides/${id}`, { method: 'PUT', body: b }),
+  /** Driver deletes their own ride (refused while passengers hold an active booking on it). */
+  remove: (id: number) => api(`/rides/${id}`, { method: 'DELETE' }),
   publish: (b: Record<string, unknown>) => api<{ ride_id: number }>('/rides', { method: 'POST', body: b }),
   estimateFare: (b: Record<string, unknown>) => api<{ suggested_price_per_seat: number; price_per_km: number }>('/rides/estimate-fare', { method: 'POST', body: b }),
+  /** `instanceId` is a ride_instance id. Read-only preview of the exact charge (fare + 20% service fee + Stripe surcharge if applicable) before booking. */
+  quote: (instanceId: number, seats: number) =>
+    api<{
+      seats_booked: number;
+      per_person_cost: number;
+      base_amount: number;
+      service_fee_percent: number;
+      by_payment_method: {
+        wallet: { service_fee_amount: number; gst_hst_amount: number; processing_fee_amount: number; total_charged: number };
+        stripe: { service_fee_amount: number; gst_hst_amount: number; processing_fee_amount: number; total_charged: number };
+      };
+    }>(`/rides/${instanceId}/quote`, { query: { seats } }),
   /** `instanceId` is a ride_instance id, not the ride id. */
   book: (
     instanceId: number,
     b: {
       seats_booked: number;
-      payment_method: 'wallet' | 'stripe';
+      /** Optional for request-mode rides on servers that take payment only after the driver accepts. */
+      payment_method?: 'wallet' | 'stripe';
       special_requests?: string;
       pickup_location?: object;
       dropoff_location?: object;
@@ -191,9 +232,14 @@ export const bookings = {
   send: (id: number, message: string) => api<ChatMessage>(`/bookings/${id}/messages`, { method: 'POST', body: { message } }),
   cancel: (id: number) => api(`/bookings/${id}/cancel`, { method: 'POST' }),
   accept: (id: number) => api(`/bookings/${id}/accept`, { method: 'POST' }),
+  /** Pay a confirmed-but-unpaid booking (the server accepts the wallet here). */
+  pay: (id: number, method: 'wallet' | 'stripe' = 'wallet') =>
+    api<{ walletBalanceAfter?: number; stripe_client_secret?: string; total_charged?: number }>(`/bookings/${id}/pay`, { method: 'POST', body: { payment_method: method } }),
   decline: (id: number, reason?: string) => api(`/bookings/${id}/decline`, { method: 'POST', body: { reason } }),
   /** null while the ride isn't currently in progress -- that's by design, not an error. */
   tracking: (id: number) => api<{ latitude: number; longitude: number; heading: number | null; speed: number | null; recorded_at: string } | null>(`/bookings/${id}/tracking`),
+  /** Fallback for when the Stripe webhook hasn't (or can't) reach the server -- call right after payWithStripe resolves true, so payment_status is correct immediately rather than only whenever/if the webhook arrives. Safe to call repeatedly. */
+  syncPayment: (id: number) => api<{ payment_status: string }>(`/bookings/${id}/sync-payment`, { method: 'POST' }),
 };
 
 export const faqs = { list: () => api<{ id: number; question: string; answer: string; category: string | null }[]>('/faqs', { auth: false, ttl: 600000 }) };
@@ -207,6 +253,8 @@ export const wallet = {
   get: () => api<{ balance: number; transactions: WalletTx[] }>('/wallet'),
   withdrawals: () => api<Withdrawal[]>('/wallet/withdraw'),
   withdraw: (amount: number, bank_account_last4: string, notes?: string) => api('/wallet/withdraw', { method: 'POST', body: { amount, payment_method: 'bank_account', bank_account_last4, notes } }),
+  /** Starts a Stripe-only recharge; confirm the returned client_secret with payWithStripe, then the webhook credits the balance. */
+  topup: (amount: number) => api<{ stripe_client_secret: string; amount: number }>('/wallet/topup', { method: 'POST', body: { amount } }),
 };
 
 export const refunds = {
@@ -260,21 +308,37 @@ export type DriverVehicle = {
 };
 export type PickedFile = { uri: string; name: string; type: string };
 
-async function uploadMultipart<T>(path: string, form: FormData): Promise<T> {
+/**
+ * Upload one file as multipart/form-data using Expo's native uploader. React Native's own fetch + FormData upload failed on
+ * Android with a bare "Network error" for every photo and document; the native uploader reads the file itself and also tells
+ * us the real HTTP status and server message. The module is loaded on demand so an older build without it still starts.
+ */
+async function uploadFile<T>(path: string, file: PickedFile, fields: Record<string, string> = {}, retried = false): Promise<T> {
   if (!token) throw new ApiError(SIGNED_OUT, 401);
-  let res: Response;
+  let result: { status: number; body: string };
   try {
-    res = await fetch(`${API_URL}${path}`, {
-      method: 'POST',
+    const FS = await import('expo-file-system/legacy');
+    result = await FS.uploadAsync(`${API_URL}${path}`, file.uri, {
+      httpMethod: 'POST',
+      uploadType: FS.FileSystemUploadType.MULTIPART,
+      fieldName: 'file',
+      mimeType: file.type,
+      parameters: fields,
       headers: { Authorization: `Bearer ${token}` },
-      body: form as unknown as BodyInit,
     });
-  } catch {
-    throw new ApiError('Network error. Check your connection.', 0);
+  } catch (e) {
+    throw new ApiError(`Could not upload the file${e instanceof Error && e.message ? `: ${e.message}` : '.'} Check your connection and try again.`, 0);
   }
-  const json = await res.json().catch(() => null);
-  if (!res.ok || json?.success === false) {
-    throw new ApiError(json?.error || `Request failed (${res.status})`, res.status);
+  if (result.status === 401 && token && !retried && (await refreshSession())) return uploadFile<T>(path, file, fields, true);
+  let json: { success?: boolean; data?: T; error?: string } | null = null;
+  try {
+    json = JSON.parse(result.body);
+  } catch {
+    // not JSON (e.g. a proxy error page)
+  }
+  if (result.status === 429) throw new ApiError('Too many requests. Please wait a minute and try again.', 429);
+  if (result.status < 200 || result.status >= 300 || json?.success === false) {
+    throw new ApiError(json?.error || (result.status === 413 ? 'That file is too large.' : `Upload failed (${result.status})`), result.status);
   }
   return json?.data as T;
 }
@@ -284,24 +348,47 @@ export const driverVehicle = {
   update: (
     b: Partial<{ make: string; model: string; year: number; color: string; license_plate: string; registration_expiry: string; insurance_expiry: string }>,
   ) => api('/drivers/me/vehicle', { method: 'PUT', body: b }),
-  uploadPhoto: (file: PickedFile) => {
-    const form = new FormData();
-    form.append('file', file as unknown as Blob);
-    return uploadMultipart<{ url: string }>('/drivers/me/vehicle/photos', form);
-  },
+  uploadPhoto: (file: PickedFile) => uploadFile<{ url: string }>('/drivers/me/vehicle/photos', file),
   removePhoto: (url: string) => api('/drivers/me/vehicle/photos', { method: 'DELETE', body: { url } }),
-  uploadRegistration: (file: PickedFile, expiry?: string) => {
-    const form = new FormData();
-    form.append('file', file as unknown as Blob);
-    if (expiry) form.append('expiry', expiry);
-    return uploadMultipart('/drivers/me/vehicle/registration', form);
+  uploadRegistration: (file: PickedFile, expiry?: string) => uploadFile('/drivers/me/vehicle/registration', file, expiry ? { expiry } : {}),
+  uploadInsurance: (file: PickedFile, expiry?: string) => uploadFile('/drivers/me/vehicle/insurance', file, expiry ? { expiry } : {}),
+};
+
+/** Driving licence + identity documents live on the user record (not the vehicle). */
+export const profile = {
+  /** Updates `users.avatar_url`/`profile_photo_url` server-side; the response's `url` is the uploaded photo. */
+  uploadPhoto: (file: PickedFile) => uploadFile<{ url: string }>('/auth/upload-document', file, { document_type: 'profile_photo' }),
+};
+
+export const licence = {
+  /** document_type: driving_license_front | driving_license_back (licence number, expiry and province go with the front). */
+  upload: (file: PickedFile, documentType: 'driving_license_front' | 'driving_license_back', meta?: { license_number?: string; license_expiry?: string; license_province?: string }) => {
+    const fields: Record<string, string> = { document_type: documentType };
+    if (meta?.license_number) fields.license_number = meta.license_number;
+    if (meta?.license_expiry) fields.license_expiry = meta.license_expiry;
+    if (meta?.license_province) fields.license_province = meta.license_province;
+    return uploadFile<{ url: string }>('/auth/upload-document', file, fields);
   },
-  uploadInsurance: (file: PickedFile, expiry?: string) => {
-    const form = new FormData();
-    form.append('file', file as unknown as Blob);
-    if (expiry) form.append('expiry', expiry);
-    return uploadMultipart('/drivers/me/vehicle/insurance', form);
-  },
+  status: () => api<{ blocked: boolean; license: { required: boolean; verified: boolean } }>('/auth/verification-status'),
+  /** The full record (not just verified/required) so the form can show what's on file and lock once it's a complete, unreviewed-or-approved submission. */
+  get: () =>
+    api<{ license_number: string | null; license_expiry: string | null; license_province: string | null; front_url: string | null; back_url: string | null; verified: boolean; locked: boolean }>(
+      '/drivers/me/license',
+    ),
+};
+
+export type PublicProfile = {
+  /** Passenger always; Driver only once the backend team verified the licence and the vehicle. */
+  roles?: ('passenger' | 'driver')[];
+  user: { id: number; first_name: string; last_name: string; avatar_url: string | null; role: 'driver' | 'passenger'; member_since: string; identity_verified: boolean; license_verified?: boolean };
+  stats: { rides_published: number; trips_driven: number; trips_cancelled_as_driver: number; bookings_total: number; bookings_completed: number; bookings_cancelled: number };
+  ratings: { average: number; total: number; distribution: Record<'1' | '2' | '3' | '4' | '5', number> };
+  reviews: { id: number; rating: number; comment: string | null; rater_role: string; created_at: string; rater_first_name: string; rater_last_initial: string }[];
+  vehicle: { make: string | null; model: string | null; year: number | null; color: string | null; license_plate: string | null; photo_urls: string[]; verification_status: string } | null;
+};
+export const profiles = {
+  /** A driver, or the other party of one of your bookings. Needs the server's /users/{id}/public-profile route. */
+  get: (id: number) => api<PublicProfile>(`/users/${id}/public-profile`, { ttl: 20000 }),
 };
 
 export const chat = {
@@ -312,6 +399,22 @@ export const settings = {
   app: () => api<{ contact_visibility_mode?: 'public' | 'private' }>('/app-settings', { auth: false, ttl: 600000 }),
   map: () => api<{ mapboxAccessToken: string }>('/map-settings', { auth: false, ttl: 600000 }),
   stripe: () => api<{ publishableKey: string; isTestMode: boolean; configured: boolean }>('/stripe-settings', { auth: false, ttl: 600000 }),
+};
+
+export type Notice = {
+  id: number;
+  image_url: string | null;
+  title: string | null;
+  subtitle: string | null;
+  link_url: string | null;
+  sort_order: number;
+};
+
+// Admin-managed home-screen notice carousel (Master > Hero Banners &
+// Notices) -- shown alongside the fixed legal/how-it-works slides in
+// InfoCarousel, not instead of them.
+export const notices = {
+  list: () => api<Notice[]>('/banners', { query: { platform: 'mobile' }, auth: false, ttl: 600000 }),
 };
 
 export type WalletTx = { id: number; amount: number | string; transaction_type: 'credit' | 'debit' | string; description?: string; balance_after?: number | string; created_at?: string };
@@ -345,6 +448,8 @@ export type ApiRide = {
   total_seats: number;
   price_per_seat: number | string;
   total_trip_amount?: number | string;
+  /** set only on local commutes (their price is calculated and cost-shared); city-to-city rides have none */
+  daily_distance_km?: number | string | null;
   is_round_trip?: boolean;
   vehicle_make?: string;
   vehicle_model?: string;
@@ -353,6 +458,7 @@ export type ApiRide = {
   license_plate?: string | null;
   driver_vehicle_photos?: string[];
   driver_vehicle_license_plate?: string | null;
+  driver_member_since?: string | null;
   booking_mode?: 'instant' | 'request';
   amenities?: string[];
   back_seat_max?: number;
@@ -389,8 +495,16 @@ export type ApiBooking = {
   status: 'pending' | 'confirmed' | 'cancelled' | 'completed';
   seats_booked: number;
   total_price?: number | string;
+  total_charged?: number | string;
+  service_fee_amount?: number | string;
+  gst_hst_amount?: number | string;
+  processing_fee_amount?: number | string;
   payment_method?: string;
   payment_status?: string;
+  /** what the driver published for one seat, and the whole trip amount that is cost-shared (booking detail only) */
+  ride_price_per_seat?: number | string;
+  ride_total_trip_amount?: number | string;
+  ride_daily_distance_km?: number | string | null;
   title?: string;
   driver_id?: number;
   passenger_id?: number;
@@ -402,6 +516,10 @@ export type ApiBooking = {
   end_name?: string;
   pickup_name?: string | null;
   dropoff_name?: string | null;
+  pickup_latitude?: string | number | null;
+  pickup_longitude?: string | number | null;
+  dropoff_latitude?: string | number | null;
+  dropoff_longitude?: string | number | null;
   departure_date?: string;
   departure_time?: string;
   booking_mode?: string;
@@ -429,4 +547,4 @@ export type BookingDetail = ApiBooking & {
 };
 
 export type EarningsSummary = { totalRides: number; totalGrossAmount: number; totalCommission: number; totalNetAmount: number; averageCommissionRate: number };
-export type MyRating = { id: number; booking_id: number; rater_role: string; rating: number; comment: string | null; created_at: string; rater_first_name: string; rater_last_name: string; ratee_first_name: string; ratee_last_name: string };
+export type MyRating = { id: number; booking_id: number; rater_id: number; ratee_id: number; rater_role: string; rating: number; comment: string | null; created_at: string; updated_at: string | null; rater_first_name: string; rater_last_name: string; ratee_first_name: string; ratee_last_name: string };

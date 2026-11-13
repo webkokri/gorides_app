@@ -9,30 +9,96 @@ import { Icon, IconName } from '../components/Icon';
 import { Avatar, Btn, Card, IconBtn, Row, T, Tag } from '../components/ui';
 import { fmtLong, money, t12 } from '../lib/format';
 import { useAuth } from '../auth';
-import { rides } from '../lib/api';
-import { seatShare } from '../lib/rideMap';
+import { ApiRide, rides } from '../lib/api';
+import { useRequireAuth } from '../lib/useRequireAuth';
+import { seatShare, toRide } from '../lib/rideMap';
 import { useStore } from '../store';
 import { C } from '../theme';
 
 export default function RideDetails() {
-  const { s, toast } = useStore();
+  const { s, set, toast } = useStore();
   const { user } = useAuth();
+  const needLogin = useRequireAuth();
   const insets = useSafeAreaInsets();
   const base = s.ride;
   const [rated, setRated] = useState<{ rating: number; rev: number } | null>(null);
+  const [detail, setDetail] = useState<ApiRide | null>(null);
   const rideId = base?.rideId;
   useEffect(() => {
     // the search list has no driver rating; the single-ride endpoint does
-    if (rideId) rides.get(rideId).then((d) => setRated({ rating: d.driver_rating ?? 0, rev: d.driver_rating_count ?? 0 })).catch(() => {});
+    if (rideId)
+      rides
+        .get(rideId)
+        .then((d) => {
+          setRated({ rating: d.driver_rating ?? 0, rev: d.driver_rating_count ?? 0 });
+          setDetail(d);
+        })
+        .catch(() => {});
   }, [rideId]);
   const r = base && rated ? { ...base, ...rated } : base;
   if (!r) return <Redirect href="/home" />;
+  const isMine = r.driverId !== undefined && r.driverId === user?.id;
   const local = s.mode === 'local';
   const stops: { time: string; place: string; sub: string; stop?: boolean }[] = [
     { time: t12(r.dep), place: r.from, sub: r.fromS },
     ...(r.stop ? [{ time: '', place: r.stop, sub: 'Stopover', stop: true }] : []),
     { time: t12(r.arr), place: r.to, sub: r.toS },
   ];
+  // Return trip. City to city: the linked return ride's own dates, each bookable on its own or with this trip.
+  // Local commute: the time the driver heads back each day (stored on the drop stop; 00:00 means none).
+  const returnInstances = (detail?.return_ride?.instances ?? []).filter((i) => !i.status || i.status === 'scheduled');
+  const localReturn = (detail?.pickup_schedules ?? []).find((p) => p.location_type === 'drop' && p.pickup_time && p.pickup_time.slice(0, 5) !== '00:00');
+  const bookReturnOnly = async (instId: number) => {
+    if (!detail?.return_ride) return;
+    try {
+      const full = await rides.get(detail.return_ride.id);
+      const inst = full.instances?.find((i) => i.id === instId) ?? detail.return_ride.instances.find((i) => i.id === instId);
+      if (!inst) return;
+      set({ ride: toRide(full, inst) });
+      router.push(user ? '/book' : { pathname: '/signin', params: { mode: 'in' } });
+    } catch {
+      toast('Could not open the return trip');
+    }
+  };
+  const returnCard =
+    !local && returnInstances.length ? (
+      <Card style={styles.blk}>
+        <T w="bold" style={styles.h4}>
+          Return trip
+        </T>
+        <T size={13} color={C.muted}>
+          This driver also drives back. Book one way, the return only, or both from the next screen.
+        </T>
+        {returnInstances.slice(0, 6).map((i) => (
+          <Row key={i.id} style={{ justifyContent: 'space-between', paddingVertical: 8 }}>
+            <View style={{ flex: 1 }}>
+              <T w="bold" size={14}>
+                {fmtLong(new Date(`${String(i.departure_date).slice(0, 10)}T00:00:00`))}
+              </T>
+              <T size={12} color={C.muted}>
+                {t12(String(i.departure_time ?? '').slice(0, 5))} · {i.available_seats ?? 0} seats left
+              </T>
+            </View>
+            {isMine ? null : <Btn label="Book return only" kind="out" small disabled={!i.available_seats} onPress={() => bookReturnOnly(i.id)} style={{ width: undefined, paddingHorizontal: 14 }} />}
+          </Row>
+        ))}
+        <T size={12} color={C.muted}>
+          A return seat is charged when you book it and is not refundable.
+        </T>
+      </Card>
+    ) : local && localReturn ? (
+      <Card style={styles.blk}>
+        <T w="bold" style={styles.h4}>
+          Return trip
+        </T>
+        <Row style={{ gap: 10 }}>
+          <Icon name="clock" color={C.oDeep} />
+          <T size={14} style={{ flex: 1 }}>
+            The driver heads back at {t12(String(localReturn.pickup_time).slice(0, 5))} on the same days. The return is included in the commute price.
+          </T>
+        </Row>
+      </Card>
+    ) : null;
   const prefs: [IconName, string][] = [
     [r.pets ? 'paw' : 'x', r.pets ? 'Pets welcome' : 'No pets'],
     ...(r.tags.map((t) => ['check', t]) as [IconName, string][]),
@@ -87,12 +153,14 @@ export default function RideDetails() {
               <Tag label={`${r.seats} of ${r.of} seats left`} icon="users" tone="g" />
             </View>
             <T w="xbold" size={24}>
-              {money(r.price)}
+              {money(seatShare(r, 1).now)}
             </T>
           </Row>
         </Card>
 
-        <Card style={styles.blk}>
+        {returnCard}
+
+        <Card style={styles.blk} onPress={r.driverId ? () => router.push({ pathname: '/user', params: { id: String(r.driverId), name: r.driver, rideId: String(r.rideId ?? '') } }) : undefined}>
           <Row>
             <Avatar name={r.driver} size={56} uri={r.avatar} verified={!!r.verified} />
             <View style={{ flex: 1 }}>
@@ -105,6 +173,9 @@ export default function RideDetails() {
                   {r.rev ? `${r.rating.toFixed(1)} · ${r.rev} review${r.rev > 1 ? 's' : ''}` : 'New driver'}
                 </T>
               </Row>
+              <T w="bold" size={12} color={C.oDeep}>
+                View profile and reviews
+              </T>
             </View>
           </Row>
           <View style={{ gap: 10, marginTop: 14 }}>
@@ -158,20 +229,34 @@ export default function RideDetails() {
 
         <View style={{ padding: 16 }}>
           {local && r.rideId ? <Btn label="Subscribe to this commute" kind="sec" small style={{ marginBottom: 10 }} onPress={() => router.push({ pathname: '/subscriptions', params: { rideId: String(r.rideId) } })} /> : null}
-          <Btn label="Report this ride" kind="out" small onPress={() => router.push('/chat')} />
+          <Btn label="Report this ride" kind="out" small onPress={needLogin(() => router.push('/chat'))} />
         </View>
       </ScrollView>
-      <View style={[styles.sticky, { paddingBottom: insets.bottom + 14 }]}>
-        <View>
-          <T size={12} color={C.muted}>
-            {s.seats} seat{s.seats > 1 ? 's' : ''}
-          </T>
-          <T w="xbold" size={22}>
-            {money(seatShare(r, s.seats).now)}
-          </T>
+      {isMine ? (
+        <View style={[styles.sticky, { paddingBottom: insets.bottom + 14 }]}>
+          <View style={{ flex: 1 }}>
+            <T w="bold" size={14}>
+              This is your own ride
+            </T>
+            <T size={12} color={C.muted}>
+              You can&apos;t book a ride you published. Manage it under My rides.
+            </T>
+          </View>
+          <Btn label="My rides" kind="sec" small onPress={() => router.replace('/my-rides')} style={{ width: undefined, paddingHorizontal: 16 }} />
         </View>
-        <Btn label={r.instant ? 'Book now' : 'Request to book'} onPress={() => (user ? router.push('/book') : router.push({ pathname: '/signin', params: { mode: 'in' } }))} style={{ flex: 1, width: undefined }} />
-      </View>
+      ) : (
+        <View style={[styles.sticky, { paddingBottom: insets.bottom + 14 }]}>
+          <View>
+            <T size={12} color={C.muted}>
+              {s.seats > 1 ? `${s.seats} seats` : 'Your seat'} · before fees
+            </T>
+            <T w="xbold" size={22}>
+              {money(seatShare(r, s.seats).now)}
+            </T>
+          </View>
+          <Btn label={r.instant ? 'Book now' : 'Request to book'} onPress={() => (user ? router.push('/book') : router.push({ pathname: '/signin', params: { mode: 'in' } }))} style={{ flex: 1, width: undefined }} />
+        </View>
+      )}
     </View>
   );
 }

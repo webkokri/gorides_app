@@ -29,6 +29,10 @@ export function toRide(r: ApiRide, inst: ApiInstance): Ride {
   const tags: string[] = [];
   if (r.amenities?.includes('pets')) tags.push('Pets OK');
   if (r.amenities?.includes('winter_tires')) tags.push('Winter tires');
+  if (r.amenities?.includes('bikes')) tags.push('Bikes OK');
+  if (r.amenities?.includes('skis_snowboards')) tags.push('Skis and snowboards');
+  const bag = ({ S: 'Small luggage', M: 'Medium luggage', L: 'Large luggage' } as Record<string, string>)[r.luggage_size ?? ''];
+  if (bag) tags.push(bag);
   if (r.back_seat_max === 2) tags.push('Max 2 in back');
   if (r.is_round_trip) tags.push('Round trip');
   const stops = (r.pickup_schedules ?? []).filter((p) => p.location_type === 'pickup').map((p) => ({ time: hhmm(p.pickup_time), place: p.location_name, sub: p.location_address ?? '' }));
@@ -36,6 +40,7 @@ export function toRide(r: ApiRide, inst: ApiInstance): Ride {
     id: `${r.id}-${inst.id}`,
     instanceId: inst.id,
     rideId: r.id,
+    driverId: r.driver_id,
     day: tripDate(inst.departure_date),
     dep,
     arr,
@@ -46,6 +51,7 @@ export function toRide(r: ApiRide, inst: ApiInstance): Ride {
     toS: r.end_address ?? '',
     price: Number(r.price_per_seat),
     tripTotal: Number(r.total_trip_amount) || undefined,
+    fixedPrice: !(Number(r.daily_distance_km) > 0),
     seats: inst.available_seats ?? r.total_seats,
     of: r.total_seats,
     driver: [r.first_name, r.last_name].filter(Boolean).join(' ') || 'Driver',
@@ -78,10 +84,25 @@ export function toRides(rs: ApiRide[], local = false): Ride[] {
  * and every passenger seat, so one seat costs total / (1 + seats already taken + seats being booked).
  */
 export function seatShare(r: Ride, seats: number) {
+  if (r.fixedPrice) return { now: r.price * seats, whenFull: r.price * seats };
   const filled = Math.max(0, r.of - r.seats);
   const total = r.tripTotal ?? r.price * r.of;
   return {
     now: (total / (1 + filled + seats)) * seats,
     whenFull: (total / (1 + r.of)) * seats,
   };
+}
+
+/**
+ * When a trip is on: from its departure time to its estimated arrival time (device local time; a trip that arrives
+ * after midnight ends the next day). Used to keep live tracking switched off outside the ride.
+ */
+export function tripWindow(dateIso: string, departure?: string, arrival?: string): { start: Date; end: Date } | null {
+  if (!dateIso || !departure) return null;
+  const day = tripDate(dateIso);
+  const at = (t: string) => new Date(`${day}T${t.slice(0, 5)}:00`);
+  const start = at(departure);
+  let end = arrival ? at(arrival) : new Date(start.getTime() + 2 * 3600e3); // no arrival estimate: assume 2 hours
+  if (end <= start) end.setDate(end.getDate() + 1);
+  return { start, end };
 }

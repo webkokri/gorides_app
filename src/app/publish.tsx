@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { goBack } from '../lib/nav';
 import { StatusBar } from 'expo-status-bar';
@@ -7,10 +8,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PlaceSheet } from '../components/Pickers';
 import { Icon, IconName } from '../components/Icon';
 import { Btn, Card, Chip, IconBtn, Row, Screen, Seg, Stepper, T, Toggle, TopBar } from '../components/ui';
-import { driverVehicle, rides, vehicles, VehicleModel } from '../lib/api';
+import { DriverVehicle, driverVehicle, rides, vehicles, VehicleModel } from '../lib/api';
 import { distanceKm, Place } from '../lib/geo';
 import { addDays, fmtDay, isoDate, today } from '../lib/format';
 import { useAuth } from '../auth';
+import { DriverRequirements } from '../components/DriverRequirements';
+import { useDriverReady } from '../lib/driverReady';
 import { SignInPrompt } from '../components/SignInPrompt';
 import { useStore } from '../store';
 import { C, F } from '../theme';
@@ -20,13 +23,21 @@ const WEEKDAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'frida
 const OPTIONS: { key: string; icon: IconName; title: string; sub: string; label: string }[] = [
   { key: 'back', icon: 'users', title: 'Max 2 in the back', sub: 'More comfort for everyone', label: 'Max 2 in back' },
   { key: 'pets', icon: 'paw', title: 'Pets welcome', sub: 'Small pets in a carrier', label: 'Pets welcome' },
-  { key: 'bags', icon: 'bag', title: 'Luggage', sub: 'One medium bag per passenger', label: 'Luggage OK' },
-  { key: 'music', icon: 'music', title: 'Music on the way', sub: 'Passengers can suggest songs', label: 'Music' },
+  { key: 'winter_tires', icon: 'car', title: 'Winter tires', sub: 'Fitted for snow and ice', label: 'Winter tires' },
+  { key: 'bikes', icon: 'car', title: 'Bikes allowed', sub: 'Room for a bike', label: 'Bikes' },
+  { key: 'skis_snowboards', icon: 'car', title: 'Skis and snowboards', sub: 'Room for winter gear', label: 'Skis and snowboards' },
+];
+const LUGGAGE: { v: 'none' | 'S' | 'M' | 'L'; label: string; sub: string }[] = [
+  { v: 'none', label: 'None', sub: 'No luggage space' },
+  { v: 'S', label: 'Small', sub: 'A backpack or a small bag each' },
+  { v: 'M', label: 'Medium', sub: 'One carry-on suitcase each' },
+  { v: 'L', label: 'Large', sub: 'A big suitcase each' },
 ];
 
 export default function Publish() {
-  const { set, toast } = useStore();
+  const { set, toast, bumpData } = useStore();
   const { user } = useAuth();
+  const driver = useDriverReady();
   const insets = useSafeAreaInsets();
   const [step, setStep] = useState(0);
   const [rideType, setRideType] = useState<'intercity' | 'local'>('intercity');
@@ -47,11 +58,43 @@ export default function Publish() {
   const [seats, setSeats] = useState(3);
   const [price, setPrice] = useState(0);
   const [suggested, setSuggested] = useState<number | null>(null);
-  const [vq, setVq] = useState('');
-  const [models, setModels] = useState<VehicleModel[]>([]);
   const [vehicle, setVehicle] = useState<VehicleModel | null>(null);
-  const [plate, setPlate] = useState('');
-  const [opts, setOpts] = useState<Record<string, boolean>>({ instant: true, back: true, pets: false, bags: true, music: true });
+  const [saved, setSaved] = useState<DriverVehicle | null>(null);
+  const [savedLoaded, setSavedLoaded] = useState(false);
+  const [bag, setBag] = useState<'none' | 'S' | 'M' | 'L'>('M');
+  // local commute: how many days a week, and for how many months from the start date
+  const [localDays, setLocalDays] = useState<5 | 6>(5);
+  const [localMonths, setLocalMonths] = useState<1 | 2 | 3>(1);
+  // The driver's car from Car and documents is used as-is: no catalogue picking. The catalogue entry is only looked up
+  // quietly because the fare estimate needs a vehicle class; it falls back to any entry when their car isn't listed.
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      try {
+        const { vehicle: v } = await driverVehicle.get();
+        if (!live) return;
+        if (v?.make && v?.model) {
+          setSaved(v);
+          const same = (a?: string | null, b?: string | null) => (a ?? '').trim().toLowerCase() === (b ?? '').trim().toLowerCase();
+          let found = await vehicles.models(`${v.make} ${v.model}`).catch(() => [] as VehicleModel[]);
+          if (!found.length) found = await vehicles.models(v.model).catch(() => [] as VehicleModel[]);
+          if (!found.length) found = await vehicles.models().catch(() => [] as VehicleModel[]);
+          const match = found.find((m) => same(m.make, v.make) && same(m.model, v.model) && (!v.year || m.year === v.year)) ?? found.find((m) => same(m.model, v.model)) ?? found.find((m) => same(m.make, v.make)) ?? found[0];
+          if (live && match) setVehicle((cur) => cur ?? match);
+        }
+      } catch {
+        // no saved car: the driver picks one below
+      } finally {
+        if (live) setSavedLoaded(true);
+      }
+    })();
+    return () => {
+      live = false;
+    };
+  }, []);
+  // only the driver's verified car can be driven: no picking another one
+  const mine = saved?.make && saved?.model && saved.verification_status === 'verified' ? saved : null;
+  const [opts, setOpts] = useState<Record<string, boolean>>({ instant: true, back: true, pets: false, winter_tires: false, bikes: false, skis_snowboards: false });
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -63,51 +106,50 @@ export default function Publish() {
   const retStamp = stamp(retDate, retHour, retMin, retAp);
   const km = fromP && toP ? distanceKm(fromP, toP) * 1.25 : 0; // straight line + road factor
   const local = rideType === 'local';
+  // whole kilometres, rounded once, so the doubled and multiplied figures always add up
+  const oneWayKm = Math.round(km);
+  const dailyKm = oneWayKm * (ret ? 2 : 1);
   // Local rides are still auto-calculated from distance + maintenance, but
   // the driver can nudge it by up to +/-10% (the server clamps to that same
   // band regardless of what's submitted) -- intercity stays fully open.
   const localMin = suggested != null ? Math.round(suggested * 0.9) : 0;
   const localMax = suggested != null ? Math.round(suggested * 1.1) : 300;
   const shownPrice = price || suggested || 0;
-
-  // vehicle catalogue search (capped at 200 rows server-side)
-  useEffect(() => {
-    let live = true;
-    const t = setTimeout(() => {
-      vehicles
-        .models(vq.trim() || undefined)
-        .then((m) => live && setModels(m.slice(0, 12)))
-        .catch(() => {});
-    }, 300);
-    return () => {
-      live = false;
-      clearTimeout(t);
-    };
-  }, [vq]);
+  // a local commute is priced per month, so each tap moves it by more than a trip's per-seat price
+  const priceStep = local ? 5 : 1;
 
   // fare suggestion once we know the route and vehicle
   useEffect(() => {
     if (!vehicle || !km) return;
     let live = true;
     rides
-      .estimateFare(local ? { ride_type: 'local', vehicle_model_id: vehicle.id, total_seats: seats, daily_distance_km: Math.round(km * 2), days_per_week: 5 } : { ride_type: 'intercity', vehicle_model_id: vehicle.id, total_seats: seats, distance_km: Math.round(km) })
+      .estimateFare(local ? { ride_type: 'local', vehicle_model_id: vehicle.id, total_seats: seats, daily_distance_km: dailyKm, days_per_week: localDays } : { ride_type: 'intercity', vehicle_model_id: vehicle.id, total_seats: seats, distance_km: Math.round(km) })
       .then((e) => {
         if (!live) return;
         const v = Math.round(e.suggested_price_per_seat);
         setSuggested(v);
-        setPrice((p) => p || v);
+        setPrice(0); // a new calculation (route, seats, days or return changed) starts the price from the calculated amount again
       })
       .catch(() => live && setSuggested(null));
     return () => {
       live = false;
     };
-  }, [vehicle, km, seats, local]);
+  }, [vehicle, km, seats, local, dailyKm, localDays]);
 
-  const retOk = !ret || local || retStamp > depStamp;
-  const stepOk = [!!fromP && !!toP, retOk, !!vehicle, true, true, shownPrice > 0, true][step];
+  const dayMin = (h: number, m: string, a: 'AM' | 'PM') => h24(h, a) * 60 + Number(m);
+  // a local commute comes back the same day, so only the time of day has to be later; city to city needs a later date and time
+  const retOk = !ret || (local ? dayMin(retHour, retMin, retAp) > dayMin(hour, min, ap) : retStamp > depStamp);
+  const endDate = addDays(date, localMonths * 30 - 1);
+  // commute days in the period: Mon-Fri (5 a week) or Mon-Sat (6 a week)
+  const commuteDays = (() => {
+    let n = 0;
+    for (let d = date; d.getTime() <= endDate.getTime(); d = addDays(d, 1)) if (d.getDay() >= 1 && d.getDay() <= localDays) n++;
+    return n;
+  })();
+  const stepOk = [!!fromP && !!toP, retOk, !!vehicle && !!mine, true, true, shownPrice > 0, true][step];
 
   const publish = async () => {
-    if (!fromP || !toP || !vehicle) return;
+    if (!fromP || !toP || !vehicle || !mine) return;
     try {
       const { is_complete } = await driverVehicle.get();
       if (!is_complete) {
@@ -126,32 +168,34 @@ export default function Publish() {
       end_location: loc(toP),
       title: `${fromP.city || fromP.name} to ${toP.city || toP.name}`,
       description: note.trim() || undefined,
-      vehicle_make: vehicle.make,
-      vehicle_model: vehicle.model,
-      vehicle_year: vehicle.year,
-      vehicle_color: vehicle.color,
-      license_plate: plate.trim() || undefined,
+      vehicle_make: mine.make ?? undefined,
+      vehicle_model: mine.model ?? undefined,
+      vehicle_year: mine.year ?? undefined,
+      vehicle_color: mine.color ?? undefined,
+      license_plate: mine.license_plate ?? undefined,
       vehicle_model_id: vehicle.id,
       total_seats: seats,
       price_per_seat: shownPrice,
       is_round_trip: ret,
       ride_type: rideType,
       posting_duration_days: 30,
-      luggage_size: opts.bags ? 'M' : 'none',
+      luggage_size: bag,
       back_seat_max: opts.back ? 2 : 3,
-      amenities: opts.pets ? ['pets'] : [],
+      amenities: ['pets', 'winter_tires', 'bikes', 'skis_snowboards'].filter((k) => opts[k]),
       booking_mode: opts.instant ? 'instant' : 'request',
     };
     const minutes = Math.max(10, Math.round((km / 90) * 60));
     const body = local
       ? {
           ...base,
-          is_round_trip_daily: true,
+          // the price covers the way back too when the driver returns the same day
+          is_round_trip_daily: ret,
           pickup_locations: [loc(fromP)],
-          drop_locations: [loc(toP)],
+          // the drop stop carries the time the driver heads back
+          drop_locations: [ret ? { ...loc(toP), return_time: `${String(h24(retHour, retAp)).padStart(2, '0')}:${retMin}` } : loc(toP)],
           // when the commute leaves each morning
           pickup_schedules: [{ pickup_time: `${hh}:${min}`, travel_time_minutes: minutes, is_active: true }],
-          travel_calendar: { start_date: isoDate(date), end_date: isoDate(addDays(date, 30)), days_per_week: 5 },
+          travel_calendar: { start_date: isoDate(date), end_date: isoDate(endDate), days_per_week: localDays },
         }
       : {
           ...base,
@@ -162,6 +206,7 @@ export default function Publish() {
     setBusy(true);
     try {
       await rides.publish(body);
+      bumpData();
       set({ published: { from: from, to: to, date, time, seats, price: shownPrice } });
       router.replace('/published');
     } catch (e) {
@@ -185,6 +230,8 @@ export default function Publish() {
         <SignInPrompt title="Sign in to publish" body="Log in or create an account to offer your empty seats." />
       </Screen>
     );
+
+  if (!driver.ready || !driver.vehicleVerified) return <DriverRequirements loading={driver.loading} vehicleOk={driver.vehicleOk} vehicleVerified={driver.vehicleVerified} licenceOk={driver.licenceOk} licenceVerified={driver.licenceVerified} />;
 
   return (
     <Screen>
@@ -216,15 +263,45 @@ export default function Publish() {
 
         {step === 1 ? (
           <>
-            <Head title="When are you leaving?" sub="Passengers see this as your departure time." />
+            <Head title={local ? 'Set up your commute' : 'When are you leaving?'} sub={local ? 'Passengers join your commute for the days you choose.' : 'Passengers see this as your departure time.'} />
             <T w="bold" size={13} color={C.ink2}>
-              Date
+              {local ? 'Start date' : 'Date'}
             </T>
             <View style={styles.wrap}>
-              {Array.from({ length: 8 }, (_, i) => addDays(today(), i)).map((d) => (
+              {Array.from({ length: local ? 14 : 8 }, (_, i) => addDays(today(), i)).map((d) => (
                 <Chip key={d.toDateString()} label={fmtDay(d)} on={d.toDateString() === date.toDateString()} onPress={() => setDate(d)} />
               ))}
             </View>
+            {local ? (
+              <>
+                <T w="bold" size={13} color={C.ink2}>
+                  Days per week
+                </T>
+                <Seg
+                  value={String(localDays)}
+                  onChange={(v) => setLocalDays(v === '6' ? 6 : 5)}
+                  options={[
+                    { v: '5', label: 'Mon to Fri' },
+                    { v: '6', label: 'Mon to Sat' },
+                  ]}
+                />
+                <T w="bold" size={13} color={C.ink2}>
+                  For how long
+                </T>
+                <Seg
+                  value={String(localMonths)}
+                  onChange={(v) => setLocalMonths(v === '3' ? 3 : v === '2' ? 2 : 1)}
+                  options={[
+                    { v: '1', label: '1 month' },
+                    { v: '2', label: '2 months' },
+                    { v: '3', label: '3 months' },
+                  ]}
+                />
+                <T size={13} color={C.muted}>
+                  {commuteDays} commute days, from {fmtDay(date)} to {fmtDay(endDate)}.
+                </T>
+              </>
+            ) : null}
             <T w="bold" size={13} color={C.ink2}>
               Departure time
             </T>
@@ -244,29 +321,32 @@ export default function Publish() {
                 {time}
               </T>
             </Card>
-            {!local ? (
-              <>
+            <>
                 <Row style={{ paddingVertical: 8 }}>
                   <View style={{ flex: 1 }}>
                     <T w="bold" size={14}>
                       Return trip
                     </T>
                     <T size={12} color={C.muted}>
-                      Publish the way back too
+                      {local ? 'You drive back the same day. Passengers see the return time.' : 'Publish the way back too. Passengers can book it with the trip or on its own.'}
                     </T>
                   </View>
                   <Toggle value={ret} onChange={setRet} />
                 </Row>
                 {ret ? (
                   <>
-                    <T w="bold" size={13} color={C.ink2}>
-                      Return date
-                    </T>
-                    <View style={styles.wrap}>
-                      {Array.from({ length: 14 }, (_, i) => addDays(date, i)).map((d) => (
-                        <Chip key={d.toDateString()} label={fmtDay(d)} on={d.toDateString() === retDate.toDateString()} onPress={() => setRetDate(d)} />
-                      ))}
-                    </View>
+                    {local ? null : (
+                      <>
+                        <T w="bold" size={13} color={C.ink2}>
+                          Return date
+                        </T>
+                        <View style={styles.wrap}>
+                          {Array.from({ length: 14 }, (_, i) => addDays(date, i)).map((d) => (
+                            <Chip key={d.toDateString()} label={fmtDay(d)} on={d.toDateString() === retDate.toDateString()} onPress={() => setRetDate(d)} />
+                          ))}
+                        </View>
+                      </>
+                    )}
                     <T w="bold" size={13} color={C.ink2}>
                       Return departure time
                     </T>
@@ -288,40 +368,52 @@ export default function Publish() {
                     </Card>
                     {!retOk ? (
                       <T size={13} color="#D64545">
-                        The return has to be after your departure.
+                        {local ? 'The return time has to be later than your departure time.' : 'The return has to be after your departure.'}
                       </T>
                     ) : null}
                   </>
                 ) : null}
               </>
-            ) : null}
           </>
         ) : null}
 
         {step === 2 ? (
           <>
-            <Head title="Your car and rules" sub="Help passengers know what to expect." />
-            <TextInput value={vq} onChangeText={setVq} placeholder="Search your car's make or model" placeholderTextColor="#A9A4AD" style={styles.search} autoCorrect={false} />
-            {models.length ? (
-              models.map((m) => (
-                <Pressable key={m.id} onPress={() => setVehicle(m)} style={[styles.car, vehicle?.id === m.id && { borderColor: C.o, backgroundColor: C.oSoft }]}>
-                  <Row>
-                    <Icon name="car" color={C.oDeep} />
-                    <View style={{ flex: 1 }}>
-                      <T w="bold" size={14}>
-                        {m.make} {m.model}
-                      </T>
-                      <T size={12} color={C.muted}>
-                        {[m.year, m.color, m.seats_capacity ? `${m.seats_capacity} seats` : ''].filter(Boolean).join(' · ')}
-                      </T>
-                    </View>
-                  </Row>
-                </Pressable>
-              ))
-            ) : (
+            <Head title="Your car and rules" sub="Passengers see these before they book." />
+            {!savedLoaded ? (
               <ActivityIndicator color={C.o} />
-            )}
-            <TextInput value={plate} onChangeText={setPlate} placeholder="Licence plate (optional)" placeholderTextColor="#A9A4AD" autoCapitalize="characters" style={styles.search} />
+            ) : mine ? (
+              <Card style={{ padding: 14, gap: 10, borderColor: C.o, borderWidth: 1 }}>
+                <Row>
+                  {mine.photo_urls?.[0] ? <Image source={{ uri: mine.photo_urls[0] }} style={{ width: 72, height: 54, borderRadius: 8 }} /> : <Icon name="car" color={C.oDeep} />}
+                  <View style={{ flex: 1 }}>
+                    <T w="bold" size={15}>
+                      {mine.make} {mine.model}
+                    </T>
+                    <T size={12} color={C.muted}>
+                      {[mine.year, mine.color, mine.license_plate].filter(Boolean).join(' · ')}
+                    </T>
+                    <T size={12} w="bold" color={C.good}>
+                      Verified
+                    </T>
+                  </View>
+                </Row>
+                <T size={12} color={C.muted}>
+                  Only your verified car can be driven on GORIDES. To change it, update it under Car and documents and wait for it to be verified.
+                </T>
+              </Card>
+            ) : null}
+            <T w="bold" size={13} color={C.ink2}>
+              Luggage space
+            </T>
+            <View style={styles.wrap}>
+              {LUGGAGE.map((l) => (
+                <Chip key={l.v} label={l.label} on={bag === l.v} onPress={() => setBag(l.v)} />
+              ))}
+            </View>
+            <T size={12} color={C.muted}>
+              {LUGGAGE.find((l) => l.v === bag)?.sub}
+            </T>
             <Card style={{ paddingHorizontal: 14 }}>
               {OPTIONS.map((o, i) => (
                 <Row key={o.key} style={[{ paddingVertical: 14 }, i > 0 && { borderTopWidth: 1, borderTopColor: C.line }]}>
@@ -334,7 +426,7 @@ export default function Publish() {
                       {o.sub}
                     </T>
                   </View>
-                  <Toggle value={opts[o.key]} onChange={(v) => setOpts({ ...opts, [o.key]: v })} />
+                  <Toggle value={!!opts[o.key]} onChange={(v) => setOpts({ ...opts, [o.key]: v })} />
                 </Row>
               ))}
             </Card>
@@ -382,10 +474,43 @@ export default function Publish() {
         {step === 5 ? (
           <>
             <Head title="Set your price" sub="Price is per seat. Keep it close to fuel and tolls." />
+            {km > 0 ? (
+              <Card style={{ padding: 14, gap: 6 }}>
+                <Row style={{ justifyContent: 'space-between' }}>
+                  <T size={13} color={C.muted}>
+                    One way
+                  </T>
+                  <T w="bold" size={14}>
+                    {oneWayKm} km
+                  </T>
+                </Row>
+                {ret ? (
+                  <Row style={{ justifyContent: 'space-between' }}>
+                    <T size={13} color={C.muted}>
+                      {local ? 'Up and down' : 'Round trip'}
+                    </T>
+                    <T w="bold" size={14}>
+                      {oneWayKm * 2} km
+                    </T>
+                  </Row>
+                ) : null}
+                {local ? (
+                  <Row style={{ justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: C.line, paddingTop: 8 }}>
+                    <T size={13} color={C.muted} style={{ flex: 1 }}>
+                      {commuteDays} days × {dailyKm} km
+                    </T>
+                    <T w="xbold" size={15}>
+                      {dailyKm * commuteDays} km total
+                    </T>
+                  </Row>
+                ) : null}
+              </Card>
+            ) : null}
             <Row style={{ justifyContent: 'center', gap: 20, paddingVertical: 14 }}>
               <Pressable
-                style={styles.round}
-                onPress={() => setPrice(local ? Math.max(localMin, shownPrice - 1) : Math.max(5, price - 1))}
+                style={[styles.round, local && shownPrice <= localMin && { opacity: 0.35 }]}
+                onPress={() => setPrice(local ? Math.max(localMin, shownPrice - priceStep) : Math.max(5, shownPrice - priceStep))}
+                disabled={local && shownPrice <= localMin}
                 accessibilityLabel="Lower price"
               >
                 <Icon name="minus" color={C.oDeep} />
@@ -394,13 +519,19 @@ export default function Publish() {
                 ${shownPrice}
               </T>
               <Pressable
-                style={styles.round}
-                onPress={() => setPrice(local ? Math.min(localMax, shownPrice + 1) : Math.min(300, price + 1))}
+                style={[styles.round, local && shownPrice >= localMax && { opacity: 0.35 }]}
+                onPress={() => setPrice(local ? Math.min(localMax, shownPrice + priceStep) : Math.min(300, shownPrice + priceStep))}
+                disabled={local && shownPrice >= localMax}
                 accessibilityLabel="Raise price"
               >
                 <Icon name="plus" color={C.oDeep} />
               </Pressable>
             </Row>
+            {suggested !== null && shownPrice !== suggested ? (
+              <T size={13} w="bold" color={shownPrice > suggested ? C.oDeep : C.good} style={{ textAlign: 'center' }}>
+                {shownPrice > suggested ? '+' : '-'}${Math.abs(shownPrice - suggested)} from the calculated ${suggested}
+              </T>
+            ) : null}
             <View style={[styles.rec, { backgroundColor: C.goodSoft }]}>
               <T size={13} color={C.good} style={{ textAlign: 'center' }}>
                 {suggested === null
@@ -410,10 +541,15 @@ export default function Publish() {
                     : `Suggested for this route: $${suggested} per seat`}
               </T>
             </View>
+            <T size={13} color={C.ink2}>
+              {local
+                ? 'Local commutes share the trip cost: the cost is split equally between you and every passenger, so a passenger pays less as more people join. GORIDES fees and tax are added at checkout.'
+                : 'You set the price per seat. Every passenger pays exactly this amount per seat, however many others join, plus GORIDES fees and tax shown at checkout. Change it up or down from the suggestion as you need.'}
+            </T>
             <Row style={styles.earn}>
               <View style={{ flex: 1 }}>
                 <T size={12} color="rgba(255,255,255,0.7)">
-                  If every seat fills
+                  If every seat fills (before GORIDES fees)
                 </T>
                 <T w="display" size={26} color="#fff">
                   ${shownPrice * seats}
@@ -421,6 +557,9 @@ export default function Publish() {
               </View>
               <Icon name="wallet" color="#fff" />
             </Row>
+            <T size={12} color={C.muted}>
+              This is the trip cost, not your payout. GORIDES deducts its service fee from your payout, and an early payout may carry an extra fee. Amounts are shown before you confirm.
+            </T>
           </>
         ) : null}
 
@@ -431,11 +570,13 @@ export default function Publish() {
               {[
                 ['Route', `${from} → ${to}`],
                 ['Type', local ? 'Local commute' : 'City to city'],
-                ['Departure', `${fmtDay(date)}, ${time}`],
-                ...(ret && !local ? [['Return', `${fmtDay(retDate)}, ${retTime}`]] : []),
+                [local ? 'Starts' : 'Departure', `${fmtDay(date)}, ${time}`],
+                ...(local ? [['Commute', `${commuteDays} days, ${localDays === 5 ? 'Mon to Fri' : 'Mon to Sat'}, until ${fmtDay(endDate)}`]] : []),
+                ...(ret ? [['Return', local ? `Same day, ${retTime}` : `${fmtDay(retDate)}, ${retTime}`]] : []),
                 ['Seats', String(seats)],
                 ['Price per seat', `$${shownPrice}`],
-                ['Car', vehicle ? `${vehicle.make} ${vehicle.model}` : ''],
+                ['Car', mine ? `${mine.make} ${mine.model}` : ''],
+                ['Luggage', LUGGAGE.find((l) => l.v === bag)?.label ?? ''],
                 ['Booking', opts.instant ? 'Instant booking' : 'You review each request'],
                 ['Options', OPTIONS.filter((o) => opts[o.key]).map((o) => o.label).join(', ') || 'None'],
               ].map(([k, v]) => (

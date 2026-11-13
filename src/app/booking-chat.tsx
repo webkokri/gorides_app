@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, ScrollViewInstance, StyleSheet, TextInput, View } from 'react-native';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { goBack } from '../lib/nav';
 import { usePolling } from '../lib/poll';
@@ -27,7 +27,7 @@ export default function BookingChat() {
   const { user } = useAuth();
   const { toast, refreshUnread } = useStore();
   const insets = useSafeAreaInsets();
-  const scroller = useRef<ScrollView>(null);
+  const scroller = useRef<ScrollViewInstance>(null);
   const lastId = useRef(0);
   const seenIds = useRef(new Set<number>());
   const [booking, setBooking] = useState<BookingDetail | null>(null);
@@ -126,7 +126,7 @@ export default function BookingChat() {
   };
 
   const name = other?.name ?? 'Chat';
-  const closed = booking?.status === 'cancelled' || booking?.status === 'completed';
+  const closed = booking?.status === 'cancelled' || booking?.status === 'completed' || booking?.instance_status === 'completed' || booking?.instance_status === 'cancelled';
 
   return (
     <Screen>

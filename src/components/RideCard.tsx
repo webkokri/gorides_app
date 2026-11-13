@@ -1,11 +1,12 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Ride } from '../data';
+import { seatShare } from '../lib/rideMap';
 import { C } from '../theme';
 import { Icon } from './Icon';
 import { Avatar, Card, Tag, T } from './ui';
 
-export function RideCard({ ride, local, onPress }: { ride: Ride; local: boolean; onPress: () => void }) {
+export function RideCard({ ride, local, onPress, isOwn }: { ride: Ride; local: boolean; onPress: () => void; isOwn?: boolean }) {
   const full = ride.seats === 0;
   return (
     <Card style={[styles.card, full && { opacity: 0.55 }]} onPress={onPress}>
@@ -22,7 +23,7 @@ export function RideCard({ ride, local, onPress }: { ride: Ride; local: boolean;
         </View>
         <View style={{ alignItems: 'flex-end' }}>
           <T w="xbold" size={22} style={full ? { textDecorationLine: 'line-through' } : undefined}>
-            ${ride.price}
+            ${seatShare(ride, 1).now.toFixed(2)}
           </T>
           <T size={11} color={C.muted}>
             {local ? 'per rider' : 'per seat'}
@@ -30,6 +31,7 @@ export function RideCard({ ride, local, onPress }: { ride: Ride; local: boolean;
         </View>
       </View>
       <View style={styles.tags}>
+        {isOwn ? <Tag label="Your published ride" tone="o" /> : null}
         {ride.instant ? <Tag label="Instant" icon="bolt" tone="o" /> : null}
         {ride.tags.map((t) => (
           <Tag key={t} label={t} />

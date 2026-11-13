@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 import { goBack } from '../lib/nav';
+import { useAuth } from '../auth';
 import { StatusBar } from 'expo-status-bar';
 import { RideCard } from '../components/RideCard';
 import { Icon } from '../components/Icon';
@@ -18,6 +19,7 @@ type Filter = 'instant' | 'rated' | 'pets';
 
 export default function Results() {
   const { s, set, toast } = useStore();
+  const { user } = useAuth();
   const local = s.mode === 'local';
   const [sort, setSort] = useState<'early' | 'cheap'>('early');
   const [filters, setFilters] = useState<Set<Filter>>(new Set());
@@ -39,7 +41,7 @@ export default function Results() {
   useEffect(() => {
     let live = true;
     (async () => {
-      const a = fromPlace ?? (await geocode(fromLabel.replace('Current location · ', '')));
+      const a = fromPlace ?? (await geocode(fromLabel.replace('', '')));
       const b = toPlace ?? (toLabel ? await geocode(toLabel) : null);
       const rs = await ridesApi.search({
         ride_type: local ? 'local' : 'intercity',
@@ -76,7 +78,7 @@ export default function Results() {
       return n;
     });
 
-  const route = local ? `${s.localFrom.replace('Current location · ', '') || 'Pickup'} → ${s.localTo ?? 'Drop point'}` : `${city(s.from)} → ${city(s.to)}`;
+  const route = local ? `${s.localFrom.replace('', '') || 'Pickup'} → ${s.localTo ?? 'Drop point'}` : `${city(s.from)} → ${city(s.to)}`;
   const meta = local ? `${fmtDay(s.localDate)} · ${s.localTrips} round trips / month · ${paxLabel(s)}` : `${fmtDay(s.date)} · ${paxLabel(s)}`;
 
   return (
@@ -141,7 +143,9 @@ export default function Results() {
                 key={r.id}
                 ride={r}
                 local={local}
+                isOwn={r.driverId !== undefined && r.driverId === user?.id}
                 onPress={() => {
+                  if (r.driverId !== undefined && r.driverId === user?.id) return toast("This is your own ride. You can't book it from a passenger account. Manage it under My rides.");
                   if (!r.seats) return toast('This ride is full');
                   set({ ride: r, seats: Math.min(s.pax, r.seats) });
                   router.push('/ride');

@@ -1,12 +1,16 @@
 import React, { useCallback, useState } from 'react';
-import { Image, ScrollView, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
+import { Image } from 'expo-image';
 import { useFocusEffect } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { StatusBar } from 'expo-status-bar';
 import { Field } from '../components/Field';
-import { Btn, Row, Screen, Section, T, TopBar } from '../components/ui';
+import { SuggestField } from '../components/SuggestField';
+import { useVehicleSuggestions, VehicleField } from '../lib/vehicleSuggest';
+import { Btn, Card, Row, Screen, Section, T, TopBar } from '../components/ui';
 import { driverVehicle, DriverVehicle, PickedFile } from '../lib/api';
+import { shrinkImage } from '../lib/image';
 import { useStore } from '../store';
 import { C } from '../theme';
 
@@ -27,8 +31,13 @@ export default function VehicleDocuments() {
   const [isComplete, setIsComplete] = useState(false);
   const [make, setMake] = useState('');
   const [model, setModel] = useState('');
+  const [year, setYear] = useState('');
   const [color, setColor] = useState('');
   const [plate, setPlate] = useState('');
+  const [focus, setFocus] = useState<VehicleField | null>(null);
+  const suggestions = useVehicleSuggestions(focus, make, model, color);
+  // close a field's list when it loses focus, but a beat later so tapping a suggestion still registers
+  const blur = (f: VehicleField) => () => setTimeout(() => setFocus((cur) => (cur === f ? null : cur)), 200);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -39,6 +48,7 @@ export default function VehicleDocuments() {
       if (res.vehicle) {
         setMake(res.vehicle.make ?? '');
         setModel(res.vehicle.model ?? '');
+        setYear(res.vehicle.year ? String(res.vehicle.year) : '');
         setColor(res.vehicle.color ?? '');
         setPlate(res.vehicle.license_plate ?? '');
       }
@@ -52,6 +62,13 @@ export default function VehicleDocuments() {
       load();
     }, [load]),
   );
+
+  // Locked once the record is a complete submission, unless staff rejected
+  // it (asking for a fix) -- the only way back in is contacting support,
+  // who can have staff reject-with-reason to reopen it, or staff verifying
+  // it as-is.
+  const locked = isComplete && vehicle?.verification_status !== 'rejected';
+  const fieldsDisabled = locked || busy;
 
   const run = async (fn: () => Promise<void>) => {
     setBusy(true);
@@ -68,7 +85,9 @@ export default function VehicleDocuments() {
   const saveDetails = () =>
     run(async () => {
       if (!plate.trim()) return toast('License plate is required');
-      await driverVehicle.update({ make: make.trim(), model: model.trim(), color: color.trim(), license_plate: plate.trim() });
+      const yearNum = year.trim() ? Number(year.trim()) : undefined;
+      if (year.trim() && (!Number.isInteger(yearNum) || yearNum! < 1980 || yearNum! > new Date().getFullYear() + 1)) return toast('Enter a valid vehicle year');
+      await driverVehicle.update({ make: make.trim(), model: model.trim(), year: yearNum, color: color.trim(), license_plate: plate.trim() });
       toast('Vehicle details saved');
     });
 
@@ -77,7 +96,7 @@ export default function VehicleDocuments() {
       const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.7 });
       if (result.canceled || !result.assets?.[0]) return;
       const asset = result.assets[0];
-      const file: PickedFile = { uri: asset.uri, name: asset.fileName ?? `photo-${Date.now()}.jpg`, type: asset.mimeType ?? 'image/jpeg' };
+      const file: PickedFile = await shrinkImage({ uri: asset.uri, name: asset.fileName ?? `photo-${Date.now()}.jpg`, type: asset.mimeType ?? 'image/jpeg' }, asset.width, asset.height);
       await driverVehicle.uploadPhoto(file);
       toast('Photo uploaded');
     });
@@ -101,7 +120,7 @@ export default function VehicleDocuments() {
     <Screen>
       <StatusBar style="dark" />
       <TopBar title="Vehicle Documents" />
-      <ScrollView contentContainerStyle={{ padding: 16, gap: 18, paddingBottom: 48 }}>
+      <ScrollView contentContainerStyle={{ padding: 16, gap: 18, paddingBottom: 48 }} keyboardShouldPersistTaps="handled">
         <T size={13} color={C.muted}>
           Required before you can publish a ride. Your photos and license plate are shown to passengers; your registration and
           insurance are only ever reviewed by our team -- they&apos;re kept as a compliance record for the company.
@@ -124,33 +143,45 @@ export default function VehicleDocuments() {
           <T size={13} color={C.bad}>
             Incomplete -- add a photo, license plate, registration, and insurance to publish rides.
           </T>
+        ) : locked ? (
+          <Card style={{ padding: 16, gap: 8, backgroundColor: vehicle?.verification_status === 'verified' ? C.goodSoft : C.oSoft }}>
+            <T w="bold" size={15} color={vehicle?.verification_status === 'verified' ? C.good : C.oDeep}>
+              {vehicle?.verification_status === 'verified' ? 'Vehicle verified' : 'Submitted -- waiting for approval'}
+            </T>
+            <T size={13} color={C.ink2}>
+              {vehicle?.verification_status === 'verified'
+                ? 'Your vehicle is verified. If anything changed (new car, new plate), contact chat support.'
+                : "Your vehicle documents are under review. This can take 1-10 working days -- we'll try our best to reach you sooner. Need to fix something? Contact chat support, and we'll reopen it for you."}
+            </T>
+          </Card>
         ) : null}
 
         <Section title="Vehicle details" />
-        <Field label="Make" value={make} onChangeText={setMake} placeholder="Toyota" />
-        <Field label="Model" value={model} onChangeText={setModel} placeholder="Camry" />
-        <Field label="Color" value={color} onChangeText={setColor} placeholder="Silver" />
-        <Field label="License plate" value={plate} onChangeText={setPlate} placeholder="ABC 123" autoCapitalize="characters" />
-        <Btn label={busy ? 'Saving…' : 'Save details'} onPress={saveDetails} disabled={busy} kind="sec" small />
+        <SuggestField label="Make" value={make} onChangeText={setMake} placeholder="Start typing, e.g. Toyota" autoCapitalize="words" editable={!fieldsDisabled} onFocus={() => setFocus('make')} onBlur={blur('make')} suggestions={focus === 'make' ? suggestions : []} onPick={(v) => (setMake(v), setFocus(null))} />
+        <SuggestField label="Model" value={model} onChangeText={setModel} placeholder={make ? `A ${make} model, e.g. Camry` : 'Pick a make first, or type a model'} autoCapitalize="words" editable={!fieldsDisabled} onFocus={() => setFocus('model')} onBlur={blur('model')} suggestions={focus === 'model' ? suggestions : []} onPick={(v) => (setModel(v), setFocus(null))} />
+        <Field label="Year" value={year} onChangeText={(v) => setYear(v.replace(/\D/g, '').slice(0, 4))} placeholder="2020" keyboardType="number-pad" editable={!fieldsDisabled} />
+        <SuggestField label="Color" value={color} onChangeText={setColor} placeholder="Start typing, e.g. Silver" autoCapitalize="words" editable={!fieldsDisabled} onFocus={() => setFocus('color')} onBlur={blur('color')} suggestions={focus === 'color' ? suggestions : []} onPick={(v) => (setColor(v), setFocus(null))} />
+        <Field label="License plate" value={plate} onChangeText={setPlate} placeholder="ABC 123" autoCapitalize="characters" editable={!fieldsDisabled} />
+        <Btn label={busy ? 'Saving…' : 'Save details'} onPress={saveDetails} disabled={fieldsDisabled} kind="sec" small />
 
         <Section title="Photos (shown to passengers)" />
         <Row style={{ gap: 10, flexWrap: 'wrap' }}>
           {photos.map((url) => (
             <View key={url} style={{ gap: 6 }}>
               <Image source={{ uri: url }} style={{ width: 90, height: 90, borderRadius: 12, backgroundColor: C.card }} />
-              <Btn label="Remove" kind="out" small disabled={busy} onPress={() => removePhoto(url)} />
+              {!locked ? <Btn label="Remove" kind="out" small disabled={busy} onPress={() => removePhoto(url)} /> : null}
             </View>
           ))}
         </Row>
-        {photos.length < 6 ? <Btn label="Add photo" icon="bag" kind="out" small disabled={busy} onPress={pickAndUploadPhoto} /> : null}
+        {photos.length < 6 ? <Btn label="Add photo" icon="bag" kind="out" small disabled={fieldsDisabled} onPress={pickAndUploadPhoto} /> : null}
 
         <Section title="Registration certificate (private)" />
         {vehicle?.registration_certificate_url ? <T size={13} color={C.good}>Uploaded ✓</T> : <T size={13} color={C.muted}>Not uploaded yet</T>}
-        <Btn label="Upload registration" kind="out" small disabled={busy} onPress={() => pickAndUploadDoc('registration')} />
+        <Btn label="Upload registration" kind="out" small disabled={fieldsDisabled} onPress={() => pickAndUploadDoc('registration')} />
 
         <Section title="Insurance document (private)" />
         {vehicle?.insurance_document_url ? <T size={13} color={C.good}>Uploaded ✓</T> : <T size={13} color={C.muted}>Not uploaded yet</T>}
-        <Btn label="Upload insurance" kind="out" small disabled={busy} onPress={() => pickAndUploadDoc('insurance')} />
+        <Btn label="Upload insurance" kind="out" small disabled={fieldsDisabled} onPress={() => pickAndUploadDoc('insurance')} />
       </ScrollView>
     </Screen>
   );

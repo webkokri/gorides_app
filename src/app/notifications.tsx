@@ -7,16 +7,20 @@ import { Row, Screen, T, TopBar } from '../components/ui';
 import { bookings, refunds } from '../lib/api';
 import { fmtDay, t12 } from '../lib/format';
 import { tripDate } from '../lib/rideMap';
+import { useAuth } from '../auth';
+import { SignInPrompt } from '../components/SignInPrompt';
 import { C } from '../theme';
 
 type Note = { key: string; icon: IconName; title: string; body: string; tone: 'o' | 'g' };
 
 // There is no notifications endpoint, so activity is built from your bookings and refunds.
 export default function Notifications() {
+  const { user } = useAuth();
   const [notes, setNotes] = useState<Note[] | null>(null);
 
   useFocusEffect(
     useCallback(() => {
+      if (!user) return;
       Promise.all([bookings.mine('all'), refunds.list()])
         .then(([bs, rs]) =>
           setNotes([
@@ -31,8 +35,17 @@ export default function Notifications() {
           ]),
         )
         .catch(() => setNotes([]));
-    }, []),
+    }, [user]),
   );
+
+  if (!user)
+    return (
+      <Screen>
+        <StatusBar style="dark" />
+        <TopBar title="Activity" />
+        <SignInPrompt />
+      </Screen>
+    );
 
   return (
     <Screen>

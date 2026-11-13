@@ -1,16 +1,16 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, AppState as RNAppState, StyleSheet, Text } from 'react-native';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { router } from 'expo-router';
+import { AppState as RNAppState } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from './auth';
 import { Ride } from './data';
-import { chat, isCoolingDown, settings } from './lib/api';
+import { chat, isCoolingDown, setSignedOutActionHandler, settings } from './lib/api';
 import type { Place } from './lib/geo';
 import { addDays, today } from './lib/format';
-import { C, F } from './theme';
-import { Icon } from './components/Icon';
+import { Toaster, ToastItem } from './components/Toaster';
 
 export type Mode = 'local' | 'long';
-export type Booking = Ride & { bookingId?: number; date: Date; seatsBooked: number; total: number; local: boolean };
+export type Booking = Ride & { bookingId?: number; date: Date; seatsBooked: number; total: number; local: boolean; paidUpFront?: boolean };
 export type Published = { from: string; to: string; date: Date; time: string; seats: number; price: number };
 
 export type AppState = {
@@ -56,28 +56,37 @@ const initial: AppState = {
   localToPlace: null,
 };
 
-type Ctx = { s: AppState; set: (p: Partial<AppState>) => void; toast: (msg: string) => void; contactMode: 'public' | 'private'; unread: number; refreshUnread: () => void };
+export type Broadcast = { instanceId: number | null; lastAt: number; error: string };
+
+type Ctx = { broadcast: Broadcast; setBroadcast: (b: Partial<Broadcast>) => void; s: AppState; set: (p: Partial<AppState>) => void; toast: (msg: string) => void; contactMode: 'public' | 'private'; unread: number; refreshUnread: () => void; dataVersion: number; bumpData: () => void };
 const StoreCtx = createContext<Ctx | null>(null);
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [s, setS] = useState<AppState>(initial);
   const set = useCallback((p: Partial<AppState>) => setS((prev) => ({ ...prev, ...p })), []);
-  const [msg, setMsg] = useState('');
-  const [y] = useState(() => new Animated.Value(-120));
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [toastItem, setToastItem] = useState<ToastItem | null>(null);
+  // is this phone currently sharing the driver's location, and did the last update reach the server?
+  const [broadcast, setBroadcastState] = useState<Broadcast>({ instanceId: null, lastAt: 0, error: '' });
+  const setBroadcast = useCallback((b: Partial<Broadcast>) => setBroadcastState((prev) => ({ ...prev, ...b })), []);
   const insets = useSafeAreaInsets();
 
   const toast = useCallback(
     (m: string) => {
       // "token required" / signed-out errors are not useful to show; screens prompt to sign in instead
       if (/token|sign in required|unauthori[sz]ed|not authenticated/i.test(m)) return;
-      setMsg(m);
-      if (timer.current) clearTimeout(timer.current);
-      Animated.spring(y, { toValue: 0, useNativeDriver: true, bounciness: 6 }).start();
-      timer.current = setTimeout(() => Animated.timing(y, { toValue: -120, duration: 250, useNativeDriver: true }).start(), 1900);
+      setToastItem({ id: Date.now() + Math.random(), text: m });
     },
-    [y],
+    [],
   );
+
+  // an account action (book, publish, message...) attempted while signed out: say so and open the login page
+  useEffect(() => {
+    setSignedOutActionHandler(() => {
+      toast('Please log in or create an account first.');
+      router.push({ pathname: '/signin', params: { mode: 'in' } });
+    });
+    return () => setSignedOutActionHandler(null);
+  }, [toast]);
 
   // Platform-wide contact visibility: fetched once at launch. Private is the safe default if it can't be read.
   const [contactMode, setContactMode] = useState<'public' | 'private'>('private');
@@ -102,14 +111,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     };
   }, [user, refreshUnread]);
 
-  const value = useMemo(() => ({ s, set, toast, contactMode, unread: user ? unread : 0, refreshUnread }), [s, set, toast, contactMode, unread, user, refreshUnread]);
+  // bumped whenever bookings/subscriptions change, so My rides and Profile reload straight away
+  const [dataVersion, setDataVersion] = useState(0);
+  const bumpData = useCallback(() => setDataVersion((v) => v + 1), []);
+
+  const value = useMemo(() => ({ broadcast, setBroadcast, s, set, toast, contactMode, unread: user ? unread : 0, refreshUnread, dataVersion, bumpData }), [broadcast, setBroadcast, s, set, toast, contactMode, unread, user, refreshUnread, dataVersion, bumpData]);
   return (
     <StoreCtx.Provider value={value}>
       {children}
-      <Animated.View pointerEvents="none" style={[styles.toast, { top: insets.top + 10, transform: [{ translateY: y }] }]}>
-        <Icon name="check" size={18} color="#7EE2B8" />
-        <Text style={styles.toastText}>{msg}</Text>
-      </Animated.View>
+      <Toaster toast={toastItem} top={insets.top} />
     </StoreCtx.Provider>
   );
 }
@@ -121,9 +131,3 @@ export function useStore() {
 }
 
 export const paxLabel = (s: AppState) => (s.mode === 'local' ? `${s.pax} rider${s.pax > 1 ? 's' : ''}` : `${s.pax} passenger${s.pax > 1 ? 's' : ''}`);
-
-const styles = StyleSheet.create({
-  toast: { position: 'absolute', alignSelf: 'center', backgroundColor: C.ink, borderRadius: 14, paddingVertical: 12, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', gap: 8, zIndex: 100, maxWidth: '90%' },
-  toastText: { color: '#fff', fontFamily: F.semi, fontSize: 14 },
-});
-

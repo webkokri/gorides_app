@@ -14,6 +14,11 @@ import { bookings, rides as ridesApi } from '../lib/api';
 import { getItem, setItem } from '../lib/storage';
 import { city, fmtDay, isoDate } from '../lib/format';
 import { useAuth } from '../auth';
+import { DriverTripCard } from '../components/DriverTripCard';
+import { PassengerTripCard } from '../components/PassengerTripCard';
+import { InfoCarousel } from '../components/InfoCarousel';
+import { MadeInCanada } from '../components/MadeInCanada';
+import { useRequireAuth } from '../lib/useRequireAuth';
 import { Mode, paxLabel, useStore } from '../store';
 import { C, shadow } from '../theme';
 
@@ -33,6 +38,7 @@ export default function Home() {
   );
 
   const { user } = useAuth();
+  const needLogin = useRequireAuth();
 
   // Popular routes come from the rides currently published (grouped by route, cheapest price, number of rides)
   const [live, setLive] = useState<Awaited<ReturnType<typeof ridesApi.search>>>([]);
@@ -108,7 +114,7 @@ export default function Home() {
             <T w="display" size={22} color="#fff" style={{ flex: 1, letterSpacing: 1 }}>
               GORIDES
             </T>
-            <IconBtn name="bell" tone="glass" dot onPress={() => router.push('/notifications')} label="Notifications" />
+            <IconBtn name="bell" tone="glass" dot onPress={needLogin(() => router.push('/notifications'))} label="Notifications" />
             <IconBtn name="help" tone="glass" onPress={() => router.push('/help')} label="Help" />
           </View>
           <T w="semi" size={14} color="rgba(255,255,255,0.9)" style={{ marginTop: 22 }}>
@@ -180,8 +186,13 @@ export default function Home() {
           )}
         </Card>
 
+        <DriverTripCard />
+        <View style={{ marginHorizontal: 16, marginTop: 14 }}>
+          <PassengerTripCard />
+        </View>
+
         <View style={styles.qa}>
-          <Pressable style={[styles.qaCard, { backgroundColor: C.night }]} onPress={() => router.push('/publish')}>
+          <Pressable style={[styles.qaCard, { backgroundColor: C.night }]} onPress={needLogin(() => router.push('/publish'))}>
             <View style={[styles.qaIc, { backgroundColor: C.o }]}>
               <Icon name="plus" color="#fff" />
             </View>
@@ -192,7 +203,7 @@ export default function Home() {
               Driving somewhere? Fill your empty seats.
             </T>
           </Pressable>
-          <Pressable style={[styles.qaCard, { backgroundColor: C.card, borderWidth: 1, borderColor: C.line }]} onPress={() => router.replace('/my-rides')}>
+          <Pressable style={[styles.qaCard, { backgroundColor: C.card, borderWidth: 1, borderColor: C.line }]} onPress={needLogin(() => router.replace('/my-rides'))}>
             <View style={[styles.qaIc, { backgroundColor: C.oSoft }]}>
               <Icon name="ticket" color={C.oDeep} />
             </View>
@@ -204,6 +215,8 @@ export default function Home() {
             </T>
           </Pressable>
         </View>
+
+        <InfoCarousel />
 
         {popular.length ? (
           <>
@@ -309,9 +322,10 @@ export default function Home() {
           </View>
         </View>
 
-        <T size={12} color={C.muted} style={{ textAlign: 'center', paddingVertical: 24 }}>
+        <T size={12} color={C.muted} style={{ textAlign: 'center', paddingTop: 24, paddingBottom: 4 }}>
           GORIDES · Rideshare across Canada
         </T>
+        <MadeInCanada />
       </ScrollView>
       <TabBar current="home" />
 
@@ -321,7 +335,7 @@ export default function Home() {
       <PlaceSheet visible={picker === 'to'} title="Going to" onClose={() => setPicker(null)} onPick={(v, p) => set({ to: v, toPlace: p })} />
       <DateSheet visible={picker === 'date'} title="Choose a date" value={s.date} onClose={() => setPicker(null)} onPick={(d) => set({ date: d })} />
       <DateSheet visible={picker === 'localDate'} title="Start date" value={s.localDate} onClose={() => setPicker(null)} onPick={(d) => set({ localDate: d })} />
-      <PaxSheet visible={picker === 'trips'} label="Round trips / month" value={s.localTrips} min={1} max={30} hint="Anywhere from 1 to 30 round trips a month" onClose={() => setPicker(null)} onPick={(localTrips) => set({ localTrips })} />
+      <PaxSheet visible={picker === 'trips'} label="Round trips / month" value={s.localTrips} min={1} max={30} hint="1 to 30 round trips a month" onClose={() => setPicker(null)} onPick={(localTrips) => set({ localTrips })} />
       <PaxSheet visible={picker === 'pax'} label={s.mode === 'local' ? 'Riders' : 'Passengers'} value={s.pax} onClose={() => setPicker(null)} onPick={(pax) => set({ pax })} />
     </View>
   );

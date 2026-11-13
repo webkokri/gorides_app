@@ -6,6 +6,7 @@ import { Field } from '../components/Field';
 import { Btn, Card, Row, Screen, Section, Sheet, T, Tag, TopBar } from '../components/ui';
 import { refunds, RefundRequest, wallet, WalletTx, Withdrawal } from '../lib/api';
 import { money } from '../lib/format';
+import { payWithStripe } from '../lib/stripe';
 import { useStore } from '../store';
 import { C } from '../theme';
 
@@ -24,9 +25,10 @@ export default function Wallet() {
   const [txs, setTxs] = useState<WalletTx[]>([]);
   const [outs, setOuts] = useState<Withdrawal[]>([]);
   const [refs, setRefs] = useState<RefundRequest[]>([]);
-  const [sheet, setSheet] = useState<null | 'withdraw' | { refund: number }>(null);
+  const [sheet, setSheet] = useState<null | 'withdraw' | 'topup' | { refund: number }>(null);
   const [busy, setBusy] = useState(false);
   const [amount, setAmount] = useState('');
+  const [topupAmount, setTopupAmount] = useState('');
   const [last4, setLast4] = useState('');
   const [bank, setBank] = useState({ holder: '', inst: '', transit: '', acct: '' });
 
@@ -68,6 +70,26 @@ export default function Wallet() {
     if (!(n > 0) || last4.length !== 4) return toast('Enter an amount and the last 4 digits of your account');
     return run(() => wallet.withdraw(n, last4), 'Withdrawal requested');
   };
+  const topup = async () => {
+    const n = Number(topupAmount);
+    if (!(n >= 5)) return toast('Enter an amount of at least $5');
+    setBusy(true);
+    try {
+      const res = await wallet.topup(n);
+      const paid = await payWithStripe(res.stripe_client_secret);
+      setSheet(null);
+      if (paid) {
+        toast('Funds added to your wallet.');
+        load();
+      } else {
+        toast('Payment not completed.');
+      }
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Could not start payment');
+    } finally {
+      setBusy(false);
+    }
+  };
   const refundId = typeof sheet === 'object' && sheet ? sheet.refund : 0;
   const toBank = () => {
     if (!bank.holder || bank.inst.length !== 3 || bank.transit.length !== 5 || !bank.acct) return toast('Fill in the bank details (3-digit institution, 5-digit transit)');
@@ -89,7 +111,10 @@ export default function Wallet() {
             <T w="display" size={40} color="#fff">
               {money(balance)}
             </T>
-            <Btn label="Withdraw to bank" kind="sec" small onPress={() => setSheet('withdraw')} />
+            <Row style={{ gap: 8 }}>
+              <Btn label="Add funds" kind="sec" small style={{ flex: 1, width: undefined }} onPress={() => setSheet('topup')} />
+              <Btn label="Withdraw to bank" kind="sec" small style={{ flex: 1, width: undefined }} onPress={() => setSheet('withdraw')} />
+            </Row>
           </Card>
 
           {refs.length ? (
@@ -160,6 +185,13 @@ export default function Wallet() {
         </ScrollView>
       )}
 
+      <Sheet visible={sheet === 'topup'} title="Add funds" onClose={() => setSheet(null)}>
+        <Field label="Amount (CAD)" value={topupAmount} onChangeText={setTopupAmount} keyboardType="decimal-pad" />
+        <T size={12} color={C.muted}>
+          Paid by card or bank debit via Stripe. Funds land in your wallet as soon as payment goes through.
+        </T>
+        <Btn label={busy ? 'Processing…' : 'Pay and add funds'} disabled={busy} onPress={topup} />
+      </Sheet>
       <Sheet visible={sheet === 'withdraw'} title="Withdraw to bank" onClose={() => setSheet(null)}>
         <Field label="Amount (CAD)" value={amount} onChangeText={setAmount} keyboardType="decimal-pad" />
         <Field label="Last 4 digits of your account" value={last4} onChangeText={(v) => setLast4(v.replace(/\D/g, '').slice(0, 4))} keyboardType="number-pad" />

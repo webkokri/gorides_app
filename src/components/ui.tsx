@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Image, Modal, Pressable, ScrollView, StyleProp, StyleSheet, Switch, Text, TextProps, TextStyle, useWindowDimensions, View, ViewStyle } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleProp, StyleSheet, Switch, Text, TextProps, TextStyle, useWindowDimensions, View, ViewStyle } from 'react-native';
+import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { goBack } from '../lib/nav';
 import { C, F, glow, shadow } from '../theme';
@@ -183,7 +184,7 @@ export function Sheet({ visible, title, onClose, children }: { visible: boolean;
   const [lift, setLift] = useState(0);
   // the sheet sits above the keyboard (KeyboardSafe pads the modal by the covered amount) and never grows taller than the space left
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <KeyboardSafe onOverlap={setLift}>
         <View style={{ flex: 1, justifyContent: 'flex-end' }}>
           <Pressable style={styles.scrim} onPress={onClose} />

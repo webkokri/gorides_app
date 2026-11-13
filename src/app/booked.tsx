@@ -20,7 +20,7 @@ export default function Booked() {
       <StatusBar style="dark" />
       <Celebrate
         title={b.instant ? "You're booked!" : 'Request sent'}
-        body={b.instant ? `${first} confirmed your seat. We sent your receipt to ${user?.email ?? 'your email'}.` : `${first} will reply soon. You won't be charged unless the request is accepted.`}
+        body={b.instant ? `${first} confirmed your seat. We sent your receipt to ${user?.email ?? 'your email'}.` : b.paidUpFront ? `${first} will review your request. If they decline, the amount is refunded.` : `${first} will review your request. We'll notify you as soon as they accept, and then you can pay to confirm your seat.`}
       >
         <Card style={{ width: '100%', padding: 14, marginTop: 8 }}>
           <Row>

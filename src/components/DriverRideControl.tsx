@@ -1,57 +1,29 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { useFocusEffect } from 'expo-router';
-import * as Location from 'expo-location';
+import React, { useState } from 'react';
+import { Alert } from 'react-native';
 import { Btn, Card, Row, T } from './ui';
 import { rides } from '../lib/api';
-import { connectTrackingSocket } from '../lib/trackingSocket';
+import { StartRouteButton } from './StartRouteButton';
+import { useNow } from '../lib/useNow';
 import { useStore } from '../store';
 import { C } from '../theme';
 
 type InstanceStatus = 'scheduled' | 'in_progress' | 'completed' | 'cancelled';
 
-/** Driver-only controls on the trip screen: start the ride (opens the live-tracking window for every
- * passenger on this ride_instance) and complete it (closes tracking + chat for all of them). While
- * in_progress, broadcasts this device's GPS over the /tracking socket every few seconds. */
-export default function DriverRideControl({ rideInstanceId, instanceStatus, onChanged }: { rideInstanceId: number; instanceStatus?: InstanceStatus; onChanged: () => void }) {
-  const { toast } = useStore();
+/** Driver-only controls on the trip screen: start the ride (opens live tracking for every passenger on this
+ * ride_instance and notifies them) and complete it (closes tracking + chat for all of them). While the ride is in
+ * progress the app shares this device's GPS from anywhere in the app (see TripBroadcaster), not just from this screen. */
+export default function DriverRideControl({ rideInstanceId, rideId, day = '', instanceStatus, onChanged }: { rideInstanceId: number; rideId?: number; day?: string; instanceStatus?: InstanceStatus; onChanged: () => void }) {
+  const { toast, bumpData, broadcast } = useStore();
+  const now = useNow(1000);
   const [busy, setBusy] = useState(false);
-  const watchRef = useRef<Location.LocationSubscription | null>(null);
-
-  const startBroadcast = useCallback(async () => {
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== 'granted') {
-      toast('Location permission is required to share your trip location.');
-      return;
-    }
-    const socket = connectTrackingSocket();
-    watchRef.current = await Location.watchPositionAsync({ accuracy: Location.Accuracy.High, timeInterval: 4000, distanceInterval: 15 }, (pos) => {
-      socket.emit('driver_update_location', {
-        ride_instance_id: rideInstanceId,
-        latitude: pos.coords.latitude,
-        longitude: pos.coords.longitude,
-        heading: pos.coords.heading,
-        speed: pos.coords.speed,
-      });
-    });
-  }, [rideInstanceId, toast]);
-
-  useFocusEffect(
-    useCallback(() => {
-      if (instanceStatus === 'in_progress') startBroadcast();
-      return () => {
-        watchRef.current?.remove();
-        watchRef.current = null;
-      };
-    }, [instanceStatus, startBroadcast]),
-  );
-
-  useEffect(() => () => watchRef.current?.remove(), []);
 
   const run = async (action: 'start' | 'complete') => {
     setBusy(true);
     try {
       if (action === 'start') await rides.startInstance(rideInstanceId);
       else await rides.completeInstance(rideInstanceId);
+      toast(action === 'start' ? 'Trip started. Your passengers have been notified.' : 'Trip completed.');
+      bumpData();
       onChanged();
     } catch (e) {
       toast(e instanceof Error ? e.message : 'Something went wrong');
@@ -60,21 +32,37 @@ export default function DriverRideControl({ rideInstanceId, instanceStatus, onCh
     }
   };
 
+  const confirm = (action: 'start' | 'complete') =>
+    Alert.alert(action === 'start' ? 'Start this trip?' : 'Complete this trip?', action === 'start' ? 'Every confirmed passenger is notified and can follow your trip live.' : 'Live tracking and chat close for everyone on this ride.', [
+      { text: 'Not yet', style: 'cancel' },
+      { text: action === 'start' ? 'Start trip' : 'Complete trip', onPress: () => run(action) },
+    ]);
+
   if (instanceStatus !== 'scheduled' && instanceStatus !== 'in_progress') return null;
+
+  const sharing = broadcast.instanceId === rideInstanceId;
+  const ago = broadcast.lastAt ? Math.max(0, Math.round((now - broadcast.lastAt) / 1000)) : null;
 
   return (
     <Card style={{ padding: 16, gap: 10 }}>
       <T w="bold">Trip controls</T>
       {instanceStatus === 'scheduled' ? (
-        <Btn label={busy ? 'Starting…' : 'Start ride'} icon="play" small disabled={busy} onPress={() => run('start')} />
+        <>
+          <T size={13} color={C.muted}>
+            Start the trip when you leave. Every confirmed passenger is notified and can follow you live. Start route opens your maps app with all the pickup points.
+          </T>
+          <Btn label={busy ? 'Starting…' : 'Start trip'} icon="play" small disabled={busy} onPress={() => confirm('start')} />
+          <StartRouteButton rideId={rideId} day={day} kind="out" />
+        </>
       ) : (
         <>
           <Row style={{ gap: 6 }}>
-            <T size={12} color={C.good}>
-              ● Sharing your location live
+            <T size={12} color={sharing && !broadcast.error ? C.good : C.warn}>
+              {sharing ? (broadcast.error ? `● Not sharing: ${broadcast.error}` : ago !== null ? `● Sharing your location · updated ${ago} s ago` : '● Starting to share your location…') : '● Starting to share your location…'}
             </T>
           </Row>
-          <Btn label={busy ? 'Completing…' : 'Complete ride'} icon="check" kind="sec" small disabled={busy} onPress={() => run('complete')} />
+          <StartRouteButton rideId={rideId} day={day} kind="sec" />
+          <Btn label={busy ? 'Completing…' : 'Complete trip'} icon="check" kind="out" small disabled={busy} onPress={() => confirm('complete')} />
         </>
       )}
     </Card>

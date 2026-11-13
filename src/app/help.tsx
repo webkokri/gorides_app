@@ -7,7 +7,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon, IconName } from '../components/Icon';
 import { Card, IconBtn, Row, Section, T } from '../components/ui';
 import { FAQ } from '../data';
+import { MadeInCanada } from '../components/MadeInCanada';
 import { faqs } from '../lib/api';
+import { useRequireAuth } from '../lib/useRequireAuth';
 import { C, F } from '../theme';
 
 const CATS: { key: string; label: string; icon: IconName }[] = [
@@ -21,6 +23,7 @@ const CATS: { key: string; label: string; icon: IconName }[] = [
 
 export default function Help() {
   const insets = useSafeAreaInsets();
+  const needLogin = useRequireAuth();
   const [q, setQ] = useState('');
   const [cat, setCat] = useState('');
   const [open, setOpen] = useState(0);
@@ -110,7 +113,7 @@ export default function Help() {
 
         <Section title="Still need help?" />
         <View style={styles.contact}>
-          <Card style={styles.cc} onPress={() => router.push('/chat')}>
+          <Card style={styles.cc} onPress={needLogin(() => router.push('/chat'))}>
             <Icon name="chat" color={C.oDeep} />
             <T w="bold" size={14}>
               Chat with us
@@ -140,6 +143,7 @@ export default function Help() {
             </T>
           </View>
         </Card>
+        <MadeInCanada style={{ paddingTop: 20 }} />
       </ScrollView>
     </View>
   );

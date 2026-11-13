@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { C, glow } from '../theme';
 import { Icon, IconName } from './Icon';
 import { useStore } from '../store';
+import { useRequireAuth } from '../lib/useRequireAuth';
 import { T } from './ui';
 
 type Tab = 'home' | 'my-rides' | 'inbox' | 'profile';
@@ -19,6 +20,7 @@ const TABS: { key: Tab; label: string; icon: IconName }[] = [
 export function TabBar({ current }: { current: Tab }) {
   const insets = useSafeAreaInsets();
   const { unread } = useStore();
+  const needLogin = useRequireAuth();
   const item = (t: (typeof TABS)[number]) => {
     const on = t.key === current;
     return (
@@ -43,7 +45,7 @@ export function TabBar({ current }: { current: Tab }) {
     <View style={[styles.bar, { bottom: Math.max(insets.bottom, 12) + 4 }]}>
       {item(TABS[0])}
       {item(TABS[1])}
-      <Pressable style={styles.pub} onPress={() => router.push('/publish')} accessibilityLabel="Publish a ride">
+      <Pressable style={styles.pub} onPress={needLogin(() => router.push('/publish'))} accessibilityLabel="Publish a ride">
         <Icon name="plus" size={26} color="#fff" strokeWidth={2.6} />
       </Pressable>
       {item(TABS[2])}

@@ -39,7 +39,7 @@ export function PlaceSheet({ visible, title, onClose, onPick, withCurrent }: { v
     try {
       setBusy(true);
       const p = await currentPlace();
-      pick(`Current location · ${p.city || p.name}`, p);
+      pick(`${p.name}${p.city && p.city !== p.name ? `, ${p.city}` : ''}`, p);
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Could not get your location');
     } finally {
@@ -54,7 +54,7 @@ export function PlaceSheet({ visible, title, onClose, onPick, withCurrent }: { v
         <TextInput value={q} onChangeText={setQ} placeholder="Search a city, station or address" placeholderTextColor="#A9A4AD" style={styles.input} autoCorrect={false} />
         {busy ? <ActivityIndicator color={C.o} /> : null}
       </View>
-      {withCurrent ? <PlaceRow title="Use current location" sub="Using GPS" icon="target" accent onPress={useCurrent} /> : null}
+      {withCurrent ? <PlaceRow title="Use current location" sub="Click to use GPS" icon="target" accent onPress={useCurrent} /> : null}
       {shown.map((p) => (
         <PlaceRow key={`${p.latitude},${p.longitude}`} title={p.name} sub={p.address} onPress={() => pick(placeLabel(p), p)} />
       ))}

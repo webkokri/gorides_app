@@ -5,46 +5,79 @@ import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar, Btn, Card, Row, Screen, Stepper, T, TopBar } from '../components/ui';
 import { fmtLong, money, t12, today } from '../lib/format';
-import { ApiRide, rides, wallet } from '../lib/api';
+import { ApiRide, bookings, rides, wallet } from '../lib/api';
 import { seatShare } from '../lib/rideMap';
+import { PriceLine } from '../components/PriceLine';
 import { payWithStripe, stripeSupported } from '../lib/stripe';
+import { useAuth } from '../auth';
 import { useStore } from '../store';
 import { C, F } from '../theme';
 
 export default function Book() {
-  const { s, set, toast } = useStore();
+  const { s, set, toast, bumpData } = useStore();
+  const { user } = useAuth();
   const insets = useSafeAreaInsets();
   const [pickup, setPickup] = useState(0);
   const [pay, setPay] = useState(0);
+  // request-mode rides: the driver reviews first and the passenger pays after they accept. Some servers still take
+  // payment with the request; when this server says so, the payment choices appear.
+  const [needsPay, setNeedsPay] = useState(false);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [balance, setBalance] = useState<number | null>(null);
   const [detail, setDetail] = useState<ApiRide | null>(null);
   const [tripType, setTripType] = useState<'one_way' | 'round_trip'>('one_way');
   const [returnInstanceId, setReturnInstanceId] = useState<number | null>(null);
+  const [quote, setQuote] = useState<Awaited<ReturnType<typeof rides.quote>> | null>(null);
   const r = s.ride;
   const rideId = r?.rideId;
   useEffect(() => {
     wallet.get().then((w) => setBalance(Number(w.balance))).catch(() => {});
     if (rideId) rides.get(rideId).then(setDetail).catch(() => {});
   }, [rideId]);
-  if (!r) return <Redirect href="/home" />;
+  useEffect(() => {
+    if (r?.instanceId) rides.quote(r.instanceId, s.seats).then(setQuote).catch(() => setQuote(null));
+  }, [r?.instanceId, s.seats]);
+  if (!r || (r.driverId !== undefined && r.driverId === user?.id)) return <Redirect href="/home" />; // a driver can't book their own ride
   const local = s.mode === 'local';
   const share = seatShare(r, s.seats);
   // Round trip: each leg is its own independently-priced booking (see
   // POST /rides/[id]/book) -- the return leg is always the same
   // price_per_seat as the outbound (see rides/route.ts), so doubling the
   // outbound share is exact, not an estimate.
+  const isReturnRide = !!detail?.title?.endsWith('(Return)');
   const canRoundTrip = !local && !!detail?.is_round_trip && !!detail?.return_ride?.instances?.length;
-  const total = share.now * (tripType === 'round_trip' ? 2 : 1); // estimate; the server computes the final charge at booking
+  const pays: { method: 'wallet' | 'stripe'; badge: string; bg: string; t: string; s: string }[] = [
+    { method: 'wallet', badge: 'GO', bg: C.o, t: 'GORIDES Wallet', s: balance === null ? 'Checking balance…' : `Balance ${money(balance)}` },
+    ...(stripeSupported ? [{ method: 'stripe' as const, badge: 'CARD', bg: '#1A1F71', t: 'Card or bank debit', s: 'Secure checkout by Stripe' }] : []),
+  ];
+  // Pay-after-accept settles via wallet (see /bookings/:id/pay), so quote
+  // with wallet math until the passenger actually picks Stripe.
+  const quoteMethod = needsPay ? pays[pay]?.method ?? 'wallet' : 'wallet';
+  const charge = quote?.by_payment_method[quoteMethod];
+  const baseShare = quote ? quote.base_amount : share.now;
+  const serviceFee = charge?.service_fee_amount ?? 0;
+  const gstHst = charge?.gst_hst_amount ?? 0;
+  const processingFee = charge?.processing_fee_amount ?? 0;
+  const legMultiplier = tripType === 'round_trip' ? 2 : 1;
+  // what the driver listed for these seats, and how the cost-sharing share differs from it (see seatShare)
+  const published = r.price * s.seats * legMultiplier;
+  const sharedDiff = baseShare * legMultiplier - published;
+  const tripTotal = r.tripTotal ?? r.price * r.of;
+  const sharing = 1 + Math.max(0, r.of - r.seats) + s.seats; // the driver plus every seat taken once this booking is in
+  const feePercent = quote?.service_fee_percent;
+  const seatsLabel = ` · ${s.seats} seat${s.seats > 1 ? 's' : ''}${tripType === 'round_trip' ? ' · both legs' : ''}`;
+  const total = charge ? charge.total_charged * legMultiplier : share.now * legMultiplier; // falls back to the local estimate while the quote loads
 
   const confirm = async () => {
     if (!r.instanceId) return toast('This ride cannot be booked');
+    if (detail?.driver_id !== undefined && detail.driver_id === user?.id) return toast("You can't book a ride you published.");
     if (tripType === 'round_trip' && !returnInstanceId) return toast('Pick a return date first');
     setBusy(true);
     try {
       // payment is part of the booking call: wallet is charged immediately, card returns a PaymentIntent to confirm
-      const method = pays[pay].method;
+      const requestFirst = !r.instant && !needsPay;
+      const method = requestFirst ? undefined : pays[pay].method;
       const res = await rides.book(r.instanceId, {
         seats_booked: s.seats,
         payment_method: method,
@@ -59,6 +92,9 @@ export default function Book() {
           router.replace('/my-rides');
           return;
         }
+        // Don't wait on the webhook to learn this succeeded -- tell the
+        // server right now, same moment Stripe just told us.
+        bookings.syncPayment(res.booking_id).catch(() => {});
       }
       if (tripType === 'round_trip' && returnInstanceId) {
         try {
@@ -71,15 +107,21 @@ export default function Book() {
           if (method === 'stripe' && returnRes.stripe_client_secret) {
             const paid = await payWithStripe(returnRes.stripe_client_secret);
             if (!paid) toast('Outbound booked. Return payment not completed -- your return seat is held for now.');
+            else bookings.syncPayment(returnRes.booking_id).catch(() => {});
           }
         } catch (e) {
           toast(`Outbound booked, but the return leg failed: ${e instanceof Error ? e.message : 'unknown error'}`);
         }
       }
-      set({ booked: { ...r, bookingId: res.booking_id, date: local ? today() : s.date, seatsBooked: s.seats, total, local, instant: res.status === 'confirmed' } });
+      set({ booked: { ...r, bookingId: res.booking_id, date: local ? today() : s.date, seatsBooked: s.seats, total, local, instant: res.status === 'confirmed', paidUpFront: method !== undefined } });
+      bumpData();
       router.replace('/booked');
     } catch (e) {
-      toast(e instanceof Error ? e.message : 'Booking failed');
+      const msg = e instanceof Error ? e.message : 'Booking failed';
+      if (!r.instant && !needsPay && /payment_method/i.test(msg)) {
+        setNeedsPay(true);
+        toast('This ride takes payment with the request. Choose how to pay, then send it again.');
+      } else toast(msg);
     } finally {
       setBusy(false);
     }
@@ -93,10 +135,6 @@ export default function Book() {
         loc: { name: p.location_name, address: p.location_address, latitude: Number(p.location_latitude), longitude: Number(p.location_longitude) },
       }))
     : [{ t: r.from, s: `${r.fromS} · ${t12(r.dep)}` }];
-  const pays: { method: 'wallet' | 'stripe'; badge: string; bg: string; t: string; s: string }[] = [
-    { method: 'wallet', badge: 'GO', bg: C.o, t: 'GORIDES Wallet', s: balance === null ? 'Checking balance…' : `Balance ${money(balance)}` },
-    ...(stripeSupported ? [{ method: 'stripe' as const, badge: 'CARD', bg: '#1A1F71', t: 'Card or bank debit', s: 'Secure checkout by Stripe' }] : []),
-  ];
 
   return (
     <Screen>
@@ -160,8 +198,8 @@ export default function Book() {
                     key={inst.id}
                     on={returnInstanceId === inst.id}
                     onPress={() => setReturnInstanceId(inst.id)}
-                    title={`${inst.departure_date}`}
-                    sub={`${inst.departure_time?.slice(0, 5) ?? ''} · ${inst.available_seats} seats left`}
+                    title={fmtLong(new Date(`${String(inst.departure_date).slice(0, 10)}T00:00:00`))}
+                    sub={`${t12(inst.departure_time?.slice(0, 5) ?? '')} · ${inst.available_seats} seats left`}
                   />
                 ))}
               </View>
@@ -182,33 +220,60 @@ export default function Book() {
           </T>
           <TextInput value={note} onChangeText={setNote} multiline placeholder="Anything the driver should know? (optional)" placeholderTextColor="#A9A4AD" style={styles.msg} />
         </Card>
-        <Card style={styles.blk}>
-          <T w="bold" style={styles.h4}>
-            Payment
-          </T>
-          {pays.map((p, i) => (
-            <Radio key={i} on={pay === i} onPress={() => setPay(i)} title={p.t} sub={p.s} badge={p.badge} badgeBg={p.bg} />
-          ))}
-        </Card>
+        {r.instant || needsPay ? (
+          <Card style={styles.blk}>
+            <T w="bold" style={styles.h4}>
+              Payment
+            </T>
+            {pays.map((p, i) => (
+              <Radio key={i} on={pay === i} onPress={() => setPay(i)} title={p.t} sub={p.s} badge={p.badge} badgeBg={p.bg} />
+            ))}
+            <T size={12} color={C.muted} style={{ marginTop: 8 }}>
+              Always pay inside GORIDES. Never pay a driver directly or outside the app: we cannot track or protect those payments.
+            </T>
+          </Card>
+        ) : (
+          <Card style={styles.blk}>
+            <T w="bold" style={styles.h4}>
+              How this booking works
+            </T>
+            <T size={14} color={C.ink2}>
+              The driver reviews every request. You pay nothing now. When the driver accepts, we notify you and you pay in the app to confirm your seat.
+            </T>
+          </Card>
+        )}
         <Card style={styles.blk}>
           <T w="bold" style={styles.h4}>
             Price breakdown
           </T>
-          <View style={{ gap: 8 }}>
-            <Row style={{ justifyContent: 'space-between' }}>
-              <T size={14}>Shared equally with the driver</T>
-              <T size={14}>{money(r.tripTotal ?? r.price * r.of)}</T>
-            </Row>
-            <Row style={{ justifyContent: 'space-between' }}>
-              <T size={14}>
-                Your share · {s.seats} seat{s.seats > 1 ? 's' : ''}
-                {tripType === 'round_trip' ? ' · both legs' : ''}
-              </T>
-              <T size={14}>{money(total)}</T>
-            </Row>
-            <T size={12} color={C.muted}>
-              The more people who join, the less everyone pays. If your share drops you get the difference back in your wallet. Full car: {money(share.whenFull)}.
-            </T>
+          <View style={{ gap: 10 }}>
+            <PriceLine
+              label={`Seat price published by the driver${seatsLabel}`}
+              amount={published}
+              why={r.fixedPrice ? `The driver set ${money(r.price)} per seat. It stays the same however many passengers join.` : `The driver listed ${money(r.price)} per seat.`}
+            />
+            {Math.abs(sharedDiff) >= 0.01 ? (
+              <PriceLine
+                label={sharedDiff > 0 ? 'Cost sharing: fewer people on board so far' : 'Cost sharing: more people on board'}
+                amount={sharedDiff}
+                minus={sharedDiff < 0}
+                why={`The whole trip costs ${money(tripTotal)} and is split equally between the driver and every passenger. With ${sharing} ${sharing > 1 ? 'people' : 'person'} sharing now, one seat is ${money(share.now / s.seats)}. It goes down as more seats fill (${money(share.whenFull / s.seats)} each when the car is full), and any drop is credited back to your wallet.`}
+              />
+            ) : null}
+            <PriceLine label={`Your share${seatsLabel}`} amount={baseShare * legMultiplier} bold />
+            {serviceFee > 0 ? (
+              <PriceLine
+                label={`GORIDES service fee${feePercent ? ` (${feePercent}%)` : ''}`}
+                amount={serviceFee * legMultiplier}
+                why="Paid to GORIDES for secure in-app payment, support and safety. It is added on top of your share. The driver does not receive it."
+              />
+            ) : null}
+            {gstHst > 0 ? (
+              <PriceLine label="GST/HST" amount={gstHst * legMultiplier} why="Sales tax on your share plus the service fee, collected on behalf of the government." />
+            ) : null}
+            {processingFee > 0 ? (
+              <PriceLine label="Card processing fee" amount={processingFee * legMultiplier} why="Charged by the card payment processor for card and bank payments. Paying from your GORIDES wallet has no processing fee." />
+            ) : null}
             <Row style={{ justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: C.line, paddingTop: 10 }}>
               <T w="xbold" size={17}>
                 Total now (CAD){tripType === 'round_trip' ? ' · both legs' : ''}
@@ -217,14 +282,32 @@ export default function Book() {
                 {money(total)}
               </T>
             </Row>
+            {total - published >= 0.01 ? (
+              <T size={12} color={C.muted}>
+                Your total is {money(total - published)} more than the published seat price{` for ${s.seats} seat${s.seats > 1 ? 's' : ''}`}: {[
+                  sharedDiff >= 0.01 ? `${money(sharedDiff)} for cost sharing` : '',
+                  serviceFee > 0 ? `${money(serviceFee * legMultiplier)} service fee` : '',
+                  gstHst > 0 ? `${money(gstHst * legMultiplier)} tax` : '',
+                  processingFee > 0 ? `${money(processingFee * legMultiplier)} card fee` : '',
+                ]
+                  .filter(Boolean)
+                  .join(', ')}
+                {sharedDiff < -0.01 ? `, less ${money(-sharedDiff)} saved by cost sharing` : ''}.
+              </T>
+            ) : null}
           </View>
         </Card>
+        {tripType === 'round_trip' || isReturnRide ? (
+          <T size={12} w="bold" color={C.oDeep} style={{ marginHorizontal: 20, marginTop: 14, lineHeight: 18 }}>
+            {tripType === 'round_trip' ? 'The return seat is charged now with the trip and is not refundable.' : 'A return seat is charged now and is not refundable.'}
+          </T>
+        ) : null}
         <T size={12} color={C.muted} style={{ marginHorizontal: 20, marginTop: 14, lineHeight: 18 }}>
           You can cancel from My rides while the booking is pending or confirmed, and the amount is refunded. By booking you agree to the GORIDES Terms of Service and Community Guidelines.
         </T>
       </ScrollView>
       <View style={[styles.sticky, { paddingBottom: insets.bottom + 14 }]}>
-        <Btn label={busy ? 'Processing payment…' : `Confirm and pay · ${money(total)}`} onPress={confirm} disabled={busy} />
+        <Btn label={busy ? 'Please wait…' : r.instant || needsPay ? `Confirm and pay · ${money(total)}` : 'Send booking request'} onPress={confirm} disabled={busy} />
       </View>
     </Screen>
   );

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Dimensions, Keyboard, Platform, StyleProp, View, ViewStyle } from 'react-native';
+import { Dimensions, Keyboard, Platform, StyleProp, View, ViewInstance, ViewStyle } from 'react-native';
 
 /**
  * Keeps the bottom of its content above the on-screen keyboard.
@@ -10,7 +10,7 @@ import { Dimensions, Keyboard, Platform, StyleProp, View, ViewStyle } from 'reac
  * that. If the window already resized itself the overlap is 0, so it never double-counts.
  */
 export function KeyboardSafe({ children, style, onOverlap }: { children: React.ReactNode; style?: StyleProp<ViewStyle>; onOverlap?: (px: number) => void }) {
-  const ref = useRef<View>(null);
+  const ref = useRef<ViewInstance>(null);
   const [pad, setPad] = useState(0);
 
   useEffect(() => {

@@ -9,13 +9,14 @@ async function mapToken() {
   return token;
 }
 
-type Feature = { text: string; place_name: string; center: [number, number]; context?: { id: string; text: string; short_code?: string }[] };
+type Feature = { text: string; address?: string; place_type?: string[]; place_name: string; center: [number, number]; context?: { id: string; text: string; short_code?: string }[] };
 
 function toPlace(f: Feature): Place {
   const ctx = (id: string) => f.context?.find((c) => c.id.startsWith(id));
-  const place = ctx('place')?.text ?? f.text;
+  const place = ctx('place')?.text ?? ctx('locality')?.text ?? f.text;
+  const name = f.place_type?.[0] === 'address' && f.address ? `${f.address} ${f.text}` : f.text;
   return {
-    name: f.text,
+    name,
     address: f.place_name,
     city: place,
     state: ctx('region')?.short_code?.replace(/^CA-/, '') ?? ctx('region')?.text ?? '',
@@ -52,9 +53,17 @@ export async function geocode(label: string): Promise<Place | null> {
 export async function currentPlace(): Promise<Place> {
   const perm = await Location.requestForegroundPermissionsAsync();
   if (perm.status !== 'granted') throw new Error('Location permission was denied.');
-  const { coords } = await Location.getCurrentPositionAsync({});
-  const f = (await mapbox(`${coords.longitude},${coords.latitude}`, { types: 'address,place', limit: '1' }))[0];
-  return f ? { ...toPlace(f), latitude: coords.latitude, longitude: coords.longitude } : { name: 'Current location', address: '', city: '', state: '', country: 'Canada', latitude: coords.latitude, longitude: coords.longitude };
+  // best accuracy available, so the address matches where the phone really is (default accuracy can be blocks away)
+  const { coords } = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+  const here = { latitude: coords.latitude, longitude: coords.longitude };
+  let f: Feature | undefined;
+  try {
+    const found = await mapbox(`${coords.longitude},${coords.latitude}`, { types: 'address,poi,neighborhood,locality,place', limit: '1' });
+    f = found[0];
+  } catch {
+    // fall through to the coordinates-only place
+  }
+  return f ? { ...toPlace(f), ...here } : { name: 'Current location', address: '', city: '', state: '', country: 'Canada', ...here };
 }
 
 export const distanceKm = (a: Place, b: Place) => {

@@ -240,8 +240,8 @@ export function PickupScene({ active, statusTop }: { active: boolean; statusTop?
 const SPLIT_TOTAL = 152;
 const SPLIT_PEOPLE = [
   { name: 'You', role: 'Driver', init: 'Y', c: C.o },
-  { name: 'Priya', role: 'Rider', init: 'P', c: '#6C5CE7' },
-  { name: 'Nadia', role: 'Rider', init: 'N', c: '#00A884' },
+  { name: 'Anu', role: 'Rider', init: 'P', c: '#6C5CE7' },
+  { name: 'Chloe', role: 'Rider', init: 'N', c: '#00A884' },
   { name: 'Tom', role: 'Rider', init: 'T', c: '#E84393' },
 ];
 const SPLIT_LOOP = 9;
