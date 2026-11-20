@@ -49,7 +49,7 @@ export default function Inbox() {
 
   if (!user)
     return (
-      <Screen>
+      <Screen bottom={false}>
         <StatusBar style="dark" />
         <TopBar big title="Inbox" />
         <SignInPrompt body="Log in to message drivers and passengers, and to contact support." />
@@ -101,7 +101,7 @@ export default function Inbox() {
   );
 
   return (
-    <Screen>
+    <Screen bottom={false}>
       <StatusBar style="dark" />
       <TopBar big title="Inbox" right={<IconBtn name="bell" label="Notifications" onPress={() => router.push('/notifications')} />} />
       <Seg

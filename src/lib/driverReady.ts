@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { useAuth } from '../auth';
-import { driverVehicle, licence } from './api';
+import { auth as authApi, driverVehicle, licence } from './api';
 import { addPushListener } from './push';
 import { getItem } from './storage';
 
@@ -15,7 +15,7 @@ const VERIFICATION_PUSH_TYPES = new Set(['vehicle_verified', 'vehicle_rejected',
  */
 export function useDriverReady() {
   const { user } = useAuth();
-  const [state, setState] = useState<{ loading: boolean; vehicleOk: boolean; vehicleVerified: boolean; licenceOk: boolean; licenceVerified: boolean }>({ loading: true, vehicleOk: false, vehicleVerified: false, licenceOk: false, licenceVerified: false });
+  const [state, setState] = useState<{ loading: boolean; vehicleOk: boolean; vehicleVerified: boolean; licenceOk: boolean; licenceVerified: boolean; mobileVerified: boolean }>({ loading: true, vehicleOk: false, vehicleVerified: false, licenceOk: false, licenceVerified: false, mobileVerified: false });
   const [refreshKey, setRefreshKey] = useState(0);
 
   // Staff approving/rejecting the vehicle or license pushes immediately --
@@ -32,12 +32,13 @@ export function useDriverReady() {
       if (!user) return;
       let live = true;
       (async () => {
-        const [v, l, flag] = await Promise.all([
+        const [v, l, flag, mobile] = await Promise.all([
           driverVehicle.get().then((r) => ({ complete: r.is_complete, verified: r.vehicle?.verification_status === 'verified' })).catch(() => ({ complete: false, verified: false })),
           licence.status().then((r) => r.license.verified).catch(() => false),
           getItem(LICENCE_FLAG),
+          authApi.verificationStatus().then((r) => r.mobile.verified).catch(() => false),
         ]);
-        if (live) setState({ loading: false, vehicleOk: v.complete, vehicleVerified: v.verified, licenceVerified: l, licenceOk: l || flag === user.id.toString() });
+        if (live) setState({ loading: false, vehicleOk: v.complete, vehicleVerified: v.verified, licenceVerified: l, licenceOk: l || flag === user.id.toString(), mobileVerified: mobile });
       })();
       return () => {
         live = false;
@@ -46,5 +47,5 @@ export function useDriverReady() {
   );
 
   // 'verified' = the backend team confirmed BOTH the vehicle and the driving licence; only then is the person a Driver on their profile
-  return { ...state, ready: !state.loading && state.vehicleOk && state.licenceOk, driverVerified: state.vehicleVerified && state.licenceVerified };
+  return { ...state, ready: !state.loading && state.vehicleOk && state.licenceOk && state.mobileVerified, driverVerified: state.vehicleVerified && state.licenceVerified };
 }

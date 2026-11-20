@@ -40,7 +40,7 @@ export default function Help() {
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
       <StatusBar style="light" />
-      <ScrollView contentContainerStyle={{ paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={{ paddingBottom: 40 + insets.bottom }} keyboardShouldPersistTaps="handled">
         <View style={[styles.hero, { paddingTop: insets.top + 8 }]}>
           <Row style={{ justifyContent: 'space-between' }}>
             <IconBtn name="back" tone="glass" label="Back" onPress={goBack} />

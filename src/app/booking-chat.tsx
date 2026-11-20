@@ -129,7 +129,7 @@ export default function BookingChat() {
   const closed = booking?.status === 'cancelled' || booking?.status === 'completed' || booking?.instance_status === 'completed' || booking?.instance_status === 'cancelled';
 
   return (
-    <Screen>
+    <Screen bottom={false}>
       <StatusBar style="dark" />
       <Row style={styles.top}>
         <IconBtn name="back" label="Back" onPress={goBack} />

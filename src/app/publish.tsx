@@ -10,6 +10,7 @@ import { Icon, IconName } from '../components/Icon';
 import { Btn, Card, Chip, IconBtn, Row, Screen, Seg, Stepper, T, Toggle, TopBar } from '../components/ui';
 import { ApiRide, bookings, DriverVehicle, driverVehicle, rides, vehicles, VehicleModel } from '../lib/api';
 import { tripDate } from '../lib/rideMap';
+import { isPast } from '../lib/trips';
 import { distanceKm, Place } from '../lib/geo';
 import { addDays, fmtDay, isoDate, today } from '../lib/format';
 import { useAuth } from '../auth';
@@ -133,7 +134,7 @@ export default function Publish() {
       try {
         const [ride, mineBookings] = await Promise.all([rides.get(editId), bookings.mine('driver').catch(() => [])]);
         if (!live) return;
-        const taken = mineBookings.some((b) => b.ride_id === editId && (b.status === 'pending' || b.status === 'confirmed') && b.instance_status !== 'completed');
+        const taken = mineBookings.some((b) => b.ride_id === editId && (b.status === 'pending' || b.status === 'confirmed') && !isPast(b, isoDate(today())));
         if (taken) {
           toast('This ride has passengers, so it can only be edited in part from My rides.');
           return goBack();
@@ -327,17 +328,17 @@ export default function Publish() {
 
   if (!user)
     return (
-      <Screen>
+      <Screen bottom={false}>
         <StatusBar style="dark" />
         <TopBar title={editId ? 'Edit ride' : 'Publish a ride'} />
         <SignInPrompt title="Sign in to publish" body="Log in or create an account to offer your empty seats." />
       </Screen>
     );
 
-  if (!driver.ready || !driver.vehicleVerified) return <DriverRequirements loading={driver.loading} vehicleOk={driver.vehicleOk} vehicleVerified={driver.vehicleVerified} licenceOk={driver.licenceOk} licenceVerified={driver.licenceVerified} />;
+  if (!driver.ready || !driver.vehicleVerified) return <DriverRequirements loading={driver.loading} vehicleOk={driver.vehicleOk} vehicleVerified={driver.vehicleVerified} licenceOk={driver.licenceOk} licenceVerified={driver.licenceVerified} mobileVerified={driver.mobileVerified} />;
 
   return (
-    <Screen>
+    <Screen bottom={false}>
       <StatusBar style="dark" />
       <TopBar title={editId ? 'Edit ride' : 'Publish a ride'} onBack={() => (step > 0 ? setStep(step - 1) : goBack())} right={<IconBtn name="help" tone="ghost" onPress={() => router.push('/help')} />} />
       <View style={styles.prog}>

@@ -1,15 +1,16 @@
 import React, { useState } from 'react';
 import { Modal, Pressable, ScrollView, ScrollViewInstance, StyleProp, StyleSheet, Switch, Text, TextProps, TextStyle, useWindowDimensions, View, ViewInstance, ViewStyle } from 'react-native';
 import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { goBack } from '../lib/nav';
-import { C, F, glow, shadow } from '../theme';
+import { C, F } from '../theme';
 import { KeyboardSafe } from './KeyboardSafe';
 import { Icon, IconName } from './Icon';
 
 type W = keyof typeof F;
 export function T({ w = 'regular', size = 15, color = C.ink, style, ...rest }: TextProps & { w?: W; size?: number; color?: string }) {
-  return <Text {...rest} style={[{ fontFamily: F[w], fontSize: size, color, flexShrink: 1 }, (w === 'display' || w === 'displayBold') && { lineHeight: size * 1.3 }, style]} />;
+  return <Text {...rest} style={[{ fontFamily: F[w], fontSize: size, color, flexShrink: 1 }, (w === 'display' || w === 'displayBold' || w === 'brand' || w === 'brandBold') && { lineHeight: size * 1.3 }, style]} />;
 }
 
 export function Btn({ label, onPress, kind = 'pri', icon, small, style, disabled }: { label: string; onPress?: () => void; kind?: 'pri' | 'sec' | 'out' | 'dark'; icon?: IconName; small?: boolean; style?: StyleProp<ViewStyle>; disabled?: boolean }) {
@@ -24,10 +25,11 @@ export function Btn({ label, onPress, kind = 'pri', icon, small, style, disabled
         styles.btn,
         { backgroundColor: bg, height: small ? 42 : 54, borderRadius: small ? 12 : 16, opacity: disabled ? 0.5 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] },
         kind === 'out' && { borderWidth: 1.5, borderColor: C.line },
-        kind === 'pri' && glow,
+        kind === 'pri' && !disabled && styles.priGlow,
         style,
       ]}
     >
+      {kind === 'pri' ? <LinearGradient pointerEvents="none" colors={['#FF9440', C.o, C.oDeep]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[StyleSheet.absoluteFill, { borderRadius: small ? 12 : 16 }]} /> : null}
       {icon ? <Icon name={icon} size={18} color={fg} /> : null}
       <T w="bold" size={small ? 14 : 16} color={fg}>
         {label}
@@ -81,10 +83,12 @@ export function TopBar({ title, right, big, onBack }: { title?: string; right?: 
   );
 }
 
-export function Screen({ children, bg = C.bg, edges = true, style }: { children: React.ReactNode; bg?: string; edges?: boolean; style?: StyleProp<ViewStyle> }) {
+/** `bottom` keeps the content above the phone's navigation bar; turn it off on screens that place their own bottom bar. */
+export function Screen({ children, bg = C.bg, edges = true, bottom = true, style }: { children: React.ReactNode; bg?: string; edges?: boolean; bottom?: boolean; style?: StyleProp<ViewStyle> }) {
   const insets = useSafeAreaInsets();
   return (
-    <View style={[{ flex: 1, backgroundColor: bg, paddingTop: edges ? insets.top : 0 }, style]}>
+    <View style={[{ flex: 1, backgroundColor: bg, paddingTop: edges ? insets.top : 0, paddingBottom: bottom ? insets.bottom : 0 }, style]}>
+      {bg === C.bg ? <LinearGradient pointerEvents="none" colors={['#FFE9D6', '#FFF4EA', C.bg]} style={styles.warm} /> : null}
       <KeyboardSafe>{children}</KeyboardSafe>
     </View>
   );
@@ -97,8 +101,8 @@ export function Seg<V extends string>({ value, options, onChange, style }: { val
         const on = o.v === value;
         return (
           <Pressable key={o.v} onPress={() => onChange(o.v)} style={[styles.segBtn, on && styles.segOn]}>
-            {o.icon ? <Icon name={o.icon} size={16} color={on ? C.oDeep : C.muted} /> : null}
-            <T w="bold" size={14} color={on ? C.oDeep : C.muted}>
+            {o.icon ? <Icon name={o.icon} size={16} color={on ? '#fff' : C.muted} /> : null}
+            <T w="bold" size={14} color={on ? '#fff' : C.muted}>
               {o.label}
             </T>
           </Pressable>
@@ -238,14 +242,16 @@ export const muted: TextStyle = { color: C.muted };
 
 export const styles = StyleSheet.create({
   btn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%' },
-  card: { backgroundColor: C.card, borderWidth: 1, borderColor: C.line, borderRadius: 20 },
+  card: { backgroundColor: C.card, borderWidth: 1, borderColor: '#F3E6DB', borderRadius: 20, shadowColor: '#C8641A', shadowOpacity: 0.09, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
+  priGlow: { shadowColor: C.o, shadowOpacity: 0.35, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 5 },
+  warm: { position: 'absolute', top: 0, left: 0, right: 0, height: 260 },
   tag: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, alignSelf: 'flex-start', flexShrink: 1, maxWidth: '100%' },
   ib: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: C.card, borderWidth: 1, borderColor: C.line },
   dot: { position: 'absolute', top: 8, right: 9, width: 9, height: 9, borderRadius: 5, backgroundColor: C.bad, borderWidth: 2, borderColor: '#fff' },
   topbar: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 10 },
   seg: { flexDirection: 'row', backgroundColor: '#F1EDEA', borderRadius: 14, padding: 4, gap: 4 },
   segBtn: { flex: 1, height: 40, borderRadius: 11, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6 },
-  segOn: { backgroundColor: C.card, ...shadow, shadowOpacity: 0.08, shadowRadius: 6, elevation: 2 },
+  segOn: { backgroundColor: C.o, shadowColor: C.o, shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 3 },
   step: { width: 40, height: 40, borderRadius: 12, borderWidth: 1.5, borderColor: C.line, alignItems: 'center', justifyContent: 'center', backgroundColor: C.card },
   vf: { position: 'absolute', right: -2, bottom: -2, width: 16, height: 16, borderRadius: 8, backgroundColor: C.good, borderWidth: 2, borderColor: '#fff', alignItems: 'center', justifyContent: 'center' },
   sect: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginTop: 26, marginBottom: 12, marginHorizontal: 20 },

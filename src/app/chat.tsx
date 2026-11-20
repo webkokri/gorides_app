@@ -108,7 +108,7 @@ export default function Chat() {
   const thread = { name: 'GORIDES Support', sub: ticketId ? `${subject}${frozen ? ' · Closed' : ''}` : 'New request' };
 
   return (
-    <Screen>
+    <Screen bottom={false}>
       <StatusBar style="dark" />
       <Row style={styles.top}>
         <IconBtn name="back" label="Back" onPress={goBack} />

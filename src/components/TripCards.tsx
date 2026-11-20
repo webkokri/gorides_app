@@ -5,7 +5,6 @@ import { Icon } from './Icon';
 import { Btn, Card, Row, Sheet, T, Tag } from './ui';
 import { ApiBooking, ApiRide, bookings, rides, Subscription } from '../lib/api';
 import { ConfirmCancel } from './ConfirmCancel';
-import { EditRideSheet } from './EditRideSheet';
 import { counterpart } from '../lib/booking';
 import { money, t12 } from '../lib/format';
 import { startWindow, SUBSCRIPTION_DAYS, tripDate, tripWindow } from '../lib/rideMap';
@@ -13,6 +12,7 @@ import { dayOf, isPast, lastTrip, nextTrips, prettyDay } from '../lib/trips';
 import { useNow } from '../lib/useNow';
 import { useStore } from '../store';
 import { C, F } from '../theme';
+import { ReturnToTripBtn } from './ReturnToTripBtn';
 
 export function Section({ title, count, children }: { title: string; count: number; children: React.ReactNode }) {
   if (!count) return null;
@@ -141,7 +141,6 @@ export function PublishedCard({ r, from, past, driverBookings, onChanged }: { r:
   const pending = mine.filter((b) => b.status === 'pending').length;
   const underway = (r.instances ?? []).some((i) => i.status === 'in_progress');
   const withPassengers = !past && mine.length > 0;
-  const [edit, setEdit] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -168,7 +167,7 @@ export function PublishedCard({ r, from, past, driverBookings, onChanged }: { r:
   const monthly = trips.length >= SUBSCRIPTION_DAYS;
   const nextBooked = first ? mine.filter((b) => b.ride_instance_id === first.id).reduce((n, b) => n + b.seats_booked, 0) : 0;
   const win = first ? startWindow(first.departure_date, first.departure_time) : null;
-  const canStart = !past && !!win && !!first && now >= win.opens.getTime() && now <= win.closes.getTime();
+  const canStart = !past && !!win && !!first && now >= win.opens.getTime() && now <= win.at.getTime() + 12 * 3600e3;
   const [cityA, cityB] = (r.title ?? '').replace(/ \(Return\)$/, '').split(' to ');
   const fromCity = cityA || r.start_location_name || '';
   const toCity = cityB || r.end_location_name || '';
@@ -191,7 +190,8 @@ export function PublishedCard({ r, from, past, driverBookings, onChanged }: { r:
         {!past ? (
           <>
             <Pressable style={styles.ico} hitSlop={6} accessibilityLabel="Edit ride" onPress={() => {
-                if (mine.length) return setEdit(true);
+                // a ride with passengers (or requests) cannot be edited; one without can be changed completely
+                if (mine.length) return toast(`This ride has ${mine.length} passenger booking${mine.length > 1 ? 's' : ''}, so it can't be edited. Decline or cancel them first, or leave the ride as it is.`);
                 // a return ride is edited through its outbound ride
                 if (/\(Return\)$/.test(r.title ?? '')) return r.return_ride_id ? router.push({ pathname: '/publish', params: { edit: String(r.return_ride_id) } }) : toast('Edit the outbound ride; its return trip is part of it.');
                 router.push({ pathname: '/publish', params: { edit: String(r.id) } });
@@ -223,8 +223,12 @@ export function PublishedCard({ r, from, past, driverBookings, onChanged }: { r:
           {trips.length} trips ahead · {mine.length} passenger booking{mine.length === 1 ? '' : 's'}
         </T>
       ) : null}
-      {canStart ? <Btn small icon="play" label={underway ? 'Open trip' : 'Start trip'} style={styles.mini} onPress={() => router.push({ pathname: '/driver-trip', params: { rideId: String(r.id), instanceId: String(first!.id), day: tripDate(first!.departure_date) } })} /> : null}
-      <EditRideSheet ride={edit ? r : null} onClose={() => setEdit(false)} onSaved={() => (bumpData(), onChanged?.())} />
+      {canStart ? (
+        (() => {
+          const open = () => router.push({ pathname: '/driver-trip', params: { rideId: String(r.id), instanceId: String(first!.id), day: tripDate(first!.departure_date) } });
+          return underway ? <ReturnToTripBtn small onPress={open} /> : <Btn small icon="play" label="Start trip" style={styles.mini} onPress={open} />;
+        })()
+      ) : null}
       <ConfirmCancel
         visible={confirmDelete}
         title="Delete this ride?"

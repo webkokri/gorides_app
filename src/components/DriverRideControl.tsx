@@ -6,6 +6,7 @@ import { router } from 'expo-router';
 import { useNow } from '../lib/useNow';
 import { useStore } from '../store';
 import { C } from '../theme';
+import { ReturnToTripBtn } from './ReturnToTripBtn';
 
 type InstanceStatus = 'scheduled' | 'in_progress' | 'completed' | 'cancelled';
 
@@ -62,7 +63,7 @@ export default function DriverRideControl({ rideInstanceId, rideId, day = '', in
               {sharing ? (broadcast.error ? `● Not sharing: ${broadcast.error}` : ago !== null ? `● Sharing your location · updated ${ago} s ago` : '● Starting to share your location…') : '● Starting to share your location…'}
             </T>
           </Row>
-          <Btn label="Open route" icon="route" kind="sec" small onPress={openTrip} />
+          <ReturnToTripBtn onPress={openTrip} />
           <Btn label={busy ? 'Completing…' : 'Complete trip'} icon="check" kind="out" small disabled={busy} onPress={() => confirm('complete')} />
         </>
       )}

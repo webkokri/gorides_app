@@ -73,3 +73,50 @@ export const distanceKm = (a: Place, b: Place) => {
 };
 
 export const placeLabel = (p: Place) => (p.city && p.city !== p.name ? `${p.name}, ${p.city}` : p.name);
+
+const driveCache = new Map<string, { at: number; sec: number | null }>();
+/** Driving time in seconds between two points (Mapbox Directions); null when unavailable. Cached for 30 s. */
+export async function drivingSeconds(a: { latitude: number; longitude: number }, b: { latitude: number; longitude: number }): Promise<number | null> {
+  const key = `${a.latitude.toFixed(4)},${a.longitude.toFixed(4)};${b.latitude.toFixed(4)},${b.longitude.toFixed(4)}`;
+  const hit = driveCache.get(key);
+  if (hit && Date.now() - hit.at < 30000) return hit.sec;
+  let sec: number | null = null;
+  try {
+    const t = await mapToken();
+    if (t) {
+      const res = await fetch(`https://api.mapbox.com/directions/v5/mapbox/driving/${a.longitude},${a.latitude};${b.longitude},${b.latitude}?overview=false&access_token=${t}`);
+      sec = (await res.json())?.routes?.[0]?.duration ?? null;
+    }
+  } catch {
+    sec = null;
+  }
+  driveCache.set(key, { at: Date.now(), sec });
+  return sec;
+}
+
+type LL = { latitude: number; longitude: number };
+type Route = { line: string | null; full: string | null; legs: number[] | null };
+const routeCache = new Map<string, { at: number; value: Route }>();
+/** Driving route through the points (Mapbox Directions): the encoded line for drawing and the seconds of each leg. Cached for 8 s. */
+export async function drivingRoute(points: LL[]): Promise<Route> {
+  if (points.length < 2) return { line: null, full: null, legs: null };
+  const coords = points.map((p) => `${p.longitude},${p.latitude}`).join(';');
+  const hit = routeCache.get(coords);
+  if (hit && Date.now() - hit.at < 8000) return hit.value;
+  let value: Route = { line: null, full: null, legs: null };
+  try {
+    const t = await mapToken();
+    if (t) {
+      const res = await fetch(`https://api.mapbox.com/directions/v5/mapbox/driving/${coords}?overview=simplified&geometries=polyline&access_token=${t}`);
+      const r = (await res.json())?.routes?.[0];
+      // a line too long for the map image address is left out (the markers still show)
+      value = { line: r?.geometry && encodeURIComponent(r.geometry).length < 5500 ? r.geometry : null, full: r?.geometry ?? null, legs: r?.legs?.map((l: { duration: number }) => l.duration) ?? null };
+    }
+  } catch {
+    // no route: the markers still show
+  }
+  routeCache.set(coords, { at: Date.now(), value });
+  return value;
+}
+
+export const mapboxToken = mapToken;

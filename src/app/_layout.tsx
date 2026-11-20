@@ -3,12 +3,15 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { useWindowDimensions } from 'react-native';
+import { useFonts } from 'expo-font';
+import { Baloo2_700Bold, Baloo2_800ExtraBold } from '@expo-google-fonts/baloo-2';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { useFonts, Baloo2_700Bold, Baloo2_800ExtraBold } from '@expo-google-fonts/baloo-2';
 import { Figtree_400Regular, Figtree_500Medium, Figtree_600SemiBold, Figtree_700Bold, Figtree_800ExtraBold } from '@expo-google-fonts/figtree';
 import { AuthProvider } from '../auth';
 import { BookingEvents } from '../components/BookingEvents';
+import { ActiveTripBar } from '../components/ActiveTripBar';
+import { RideReminders } from '../components/RideReminders';
 import { TripBroadcaster } from '../components/TripBroadcaster';
 import { askStartupPermissions } from '../lib/here';
 import { StoreProvider } from '../store';
@@ -45,6 +48,7 @@ export default function RootLayout() {
         <StatusBar style="auto" />
         <BookingEvents />
         <TripBroadcaster />
+        <RideReminders />
         <Stack screenOptions={{ headerShown: false, animation: 'slide_from_right', contentStyle: { backgroundColor: C.bg } }}>
           <Stack.Screen name="index" options={{ animation: 'fade' }} />
           <Stack.Screen name="onboarding" options={{ animation: 'fade' }} />
@@ -55,6 +59,7 @@ export default function RootLayout() {
           <Stack.Screen name="booked" options={{ animation: 'fade', gestureEnabled: false }} />
           <Stack.Screen name="published" options={{ animation: 'fade', gestureEnabled: false }} />
         </Stack>
+        <ActiveTripBar />
       </StoreProvider>
       </AuthProvider>
     </SafeAreaProvider>

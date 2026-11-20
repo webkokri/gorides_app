@@ -115,6 +115,12 @@ export function BookingEvents() {
   useEffect(() => {
     if (!user) return;
     return listenForPushTaps(async (data) => {
+      // the driver's "starts in 30 minutes" / "time to start" reminders open the trip screen (Start ride / Start route buttons do their job there)
+      if ((data.type === 'ride_reminder' || data.type === 'ride_start_due') && data.ride_instance_id) {
+        const action = data.__action === 'start' ? '1' : '';
+        const nav = data.__action === 'route' ? '1' : '';
+        return router.push({ pathname: '/driver-trip', params: { rideId: String(data.ride_id), instanceId: String(data.ride_instance_id), day: String(data.day ?? ''), ...(action ? { start: action } : {}), ...(nav ? { nav } : {}) } });
+      }
       if (data.type === 'ride_started') {
         try {
           const mine = await bookings.mine('passenger', 'confirmed');

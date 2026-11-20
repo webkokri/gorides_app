@@ -76,7 +76,7 @@ const styles = StyleSheet.create({
   root: { flex: 1, alignItems: 'center' },
   logo: { position: 'absolute', width: LOGO, height: LOGO },
   word: { position: 'absolute', left: 0, right: 0, flexDirection: 'row', justifyContent: 'center' },
-  letter: { fontFamily: F.display, fontSize: 46, color: '#fff', lineHeight: 60, letterSpacing: 3, textShadowColor: 'rgba(0,0,0,0.5)', textShadowRadius: 12 },
+  letter: { fontFamily: F.brand, fontSize: 46, color: '#fff', lineHeight: 60, letterSpacing: 3, textShadowColor: 'rgba(0,0,0,0.5)', textShadowRadius: 12 },
   tag: { position: 'absolute', left: 0, right: 0, alignItems: 'center' },
   foot: { position: 'absolute', bottom: 60, letterSpacing: 1.8 },
 });

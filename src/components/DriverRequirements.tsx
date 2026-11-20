@@ -7,8 +7,9 @@ import { Btn, Card, Row, Screen, T, TopBar } from './ui';
 import { C } from '../theme';
 
 /** Blocks publishing until the driver's car and licence are on file. Shown instead of the publish form. */
-export function DriverRequirements({ loading, vehicleOk, vehicleVerified = true, licenceOk, licenceVerified }: { loading: boolean; vehicleOk: boolean; vehicleVerified?: boolean; licenceOk: boolean; licenceVerified: boolean }) {
+export function DriverRequirements({ loading, vehicleOk, vehicleVerified = true, licenceOk, licenceVerified, mobileVerified = true }: { loading: boolean; vehicleOk: boolean; vehicleVerified?: boolean; licenceOk: boolean; licenceVerified: boolean; mobileVerified?: boolean }) {
   const items = [
+    { ok: mobileVerified, title: 'Verified mobile number', sub: mobileVerified ? 'Verified' : 'We text a 6-digit code to your number. Passengers and our team need to be able to reach you.', label: 'Verify my number', to: '/verify-mobile' as const },
     { ok: vehicleOk && vehicleVerified, title: 'Verified car', sub: vehicleOk && !vehicleVerified ? 'Uploaded, waiting for review. Only a verified car can be driven.' : 'Plate number, car photos, registration and insurance. Only a verified car can be driven.', label: 'Add car details', to: '/vehicle-documents' as const },
     { ok: licenceOk, title: 'Driving licence', sub: licenceVerified ? 'Verified' : licenceOk ? 'Uploaded, waiting for review' : 'Licence number, expiry and photos of both sides', label: 'Add driving licence', to: '/driving-licence' as const },
   ];
@@ -20,7 +21,7 @@ export function DriverRequirements({ loading, vehicleOk, vehicleVerified = true,
         <T w="display" size={28}>
           Complete your driver profile first
         </T>
-        <T color={C.muted}>Passengers need to know who is driving and in what car. You can publish rides once both items below are done and verified.</T>
+        <T color={C.muted}>Passengers need to know who is driving and in what car. You can publish rides once every item below is done and verified.</T>
         {loading ? <ActivityIndicator color={C.o} style={{ marginTop: 16 }} /> : null}
         {!loading
           ? items.map((it) => (

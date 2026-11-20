@@ -94,7 +94,7 @@ export default function Onboarding() {
         </Pressable>
         <View style={styles.mini}>
           <Logo size={30} />
-          <T w="display" size={20} color="#fff" style={{ letterSpacing: 1 }}>
+          <T w="brand" size={20} color="#fff" style={{ letterSpacing: 1 }}>
             GORIDES
           </T>
         </View>
@@ -145,7 +145,7 @@ function SlideCopy({ slide, active, bottom, onHeight }: { slide: (typeof SLIDES)
           {slide.eyebrow}
         </T>
       </View>
-      <T w="display" size={36} color="#fff" style={{ lineHeight: 46, marginBottom: 10 }}>
+      <T w="brand" size={36} color="#fff" style={{ lineHeight: 46, marginBottom: 10 }}>
         {slide.title}
       </T>
       <T size={15} color="rgba(255,255,255,0.78)" style={{ lineHeight: 22 }}>
@@ -175,12 +175,12 @@ function VideoSlide({ active, topInset }: { active: boolean; topInset: number })
           VIDEO
         </T>
       </View>
-      <T w="displayBold" size={22} color="#fff" style={[styles.cap, { top: topInset + 100 }]}>
+      <T w="brandBold" size={22} color="#fff" style={[styles.cap, { top: topInset + 100 }]}>
         {CAP}
       </T>
       <View style={[styles.vidCard, { top: '24%' }]}>
         <View style={styles.vidNum}>
-          <T w="display" size={20} color="#fff">
+          <T w="brand" size={20} color="#fff">
             {phase + 1}
           </T>
         </View>

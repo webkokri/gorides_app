@@ -4,7 +4,6 @@ import { Redirect, router } from 'expo-router';
 import { goBack } from '../lib/nav';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { RideMap } from '../components/scenes/Maps';
 import { Icon, IconName } from '../components/Icon';
 import { Avatar, Btn, Card, IconBtn, Row, T, Tag } from '../components/ui';
 import { fmtLong, money, t12 } from '../lib/format';
@@ -55,7 +54,7 @@ export default function RideDetails() {
       const inst = full.instances?.find((i) => i.id === instId) ?? detail.return_ride.instances.find((i) => i.id === instId);
       if (!inst) return;
       set({ ride: toRide(full, inst) });
-      router.push(user ? '/book' : { pathname: '/signin', params: { mode: 'in' } });
+      router.push(user ? '/before-you-book' : { pathname: '/signin', params: { mode: 'in' } });
     } catch {
       toast('Could not open the return trip');
     }
@@ -106,14 +105,11 @@ export default function RideDetails() {
 
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
-      <StatusBar style="light" />
+      <StatusBar style="dark" />
       <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
-        <View>
-          <RideMap local={local} height={230 + insets.top} />
-          <View style={[styles.mapBtns, { top: insets.top + 8 }]}>
-            <IconBtn name="back" onPress={goBack} label="Back" />
-            <IconBtn name="share" onPress={() => toast('Trip link copied')} label="Share" />
-          </View>
+        <View style={[styles.mapBtns, { paddingTop: insets.top + 8, paddingBottom: 12 }]}>
+          <IconBtn name="back" onPress={goBack} label="Back" />
+          <IconBtn name="share" onPress={() => toast('Trip link copied')} label="Share" />
         </View>
         <Card style={styles.main}>
           <T w="bold" size={13} color={C.oDeep} style={{ letterSpacing: 1 }}>
@@ -254,7 +250,7 @@ export default function RideDetails() {
               {money(seatShare(r, s.seats).now)}
             </T>
           </View>
-          <Btn label={r.instant ? 'Book now' : 'Request to book'} onPress={() => (user ? router.push('/book') : router.push({ pathname: '/signin', params: { mode: 'in' } }))} style={{ flex: 1, width: undefined }} />
+          <Btn label={r.instant ? 'Book now' : 'Request to book'} onPress={() => (user ? router.push('/before-you-book') : router.push({ pathname: '/signin', params: { mode: 'in' } }))} style={{ flex: 1, width: undefined }} />
         </View>
       )}
     </View>
@@ -262,8 +258,8 @@ export default function RideDetails() {
 }
 
 const styles = StyleSheet.create({
-  mapBtns: { position: 'absolute', left: 16, right: 16, flexDirection: 'row', justifyContent: 'space-between' },
-  main: { marginTop: -26, marginHorizontal: 16, padding: 18 },
+  mapBtns: { paddingHorizontal: 16, flexDirection: 'row', justifyContent: 'space-between' },
+  main: { marginHorizontal: 16, padding: 18 },
   st: { flexDirection: 'row', gap: 10 },
   rail: { width: 18, alignItems: 'center' },
   node: { width: 14, height: 14, borderRadius: 7, borderWidth: 3, borderColor: C.ink, backgroundColor: C.card, marginTop: 3, zIndex: 1 },

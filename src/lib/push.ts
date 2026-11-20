@@ -79,6 +79,11 @@ export function addPushListener(onReceived: (data: Record<string, any>) => void)
   };
 }
 
+/** The server dropped this device's push token (the account signed in elsewhere): register again on the next sign-in. */
+export function forgetPushToken() {
+  registeredToken = null;
+}
+
 /** Call on sign-out so this device stops getting pushes for the account that just signed out. */
 export async function unregisterPushNotifications() {
   if (!registeredToken) return;
@@ -105,9 +110,54 @@ export function listenForPushTaps(onTap: (data: Record<string, unknown>) => void
     const last = await getItem('gorides.push.last');
     if (last === id) return;
     await setItem('gorides.push.last', id);
-    onTap((r.notification.request.content.data ?? {}) as Record<string, unknown>);
+    // the id of a tapped action button (e.g. "Start ride") rides along as `__action`
+    onTap({ ...((r.notification.request.content.data ?? {}) as Record<string, unknown>), __action: r.actionIdentifier });
   };
   const sub = Notifications.addNotificationResponseReceivedListener(handle);
   Notifications.getLastNotificationResponseAsync().then((r) => r && handle(r)).catch(() => {});
   return () => sub.remove();
+}
+
+export const RIDE_START_CATEGORY = 'ride_start';
+
+/** Action buttons shown on the "time to start your ride" notification. */
+export async function setupRideCategory() {
+  if (!Notifications) return;
+  try {
+    await Notifications.setNotificationCategoryAsync(RIDE_START_CATEGORY, [
+      { identifier: 'start', buttonTitle: 'Start ride', options: { opensAppToForeground: true } },
+      { identifier: 'route', buttonTitle: 'Start route', options: { opensAppToForeground: true } },
+    ]);
+  } catch {
+    // Non-fatal: the notification still opens the trip screen.
+  }
+}
+
+export type LocalReminder = { id: string; at: Date; title: string; body: string; data: Record<string, unknown>; category?: string };
+
+/**
+ * Makes the phone's scheduled local notifications that start with `prefix` match `wanted` exactly: new ones are scheduled,
+ * ones that are no longer wanted (trip changed, cancelled or finished) are cancelled. Local notifications fire on time even
+ * when the app is closed or the phone is offline. No-op in Expo Go or without the notification permission.
+ */
+export async function syncLocalReminders(prefix: string, wanted: LocalReminder[]) {
+  if (!Notifications) return;
+  try {
+    const perm = await Notifications.getPermissionsAsync();
+    if (!perm.granted) return;
+    const existing = (await Notifications.getAllScheduledNotificationsAsync()).filter((n) => n.identifier.startsWith(prefix));
+    const keep = new Set(wanted.map((w) => w.id));
+    await Promise.all(existing.filter((n) => !keep.has(n.identifier)).map((n) => Notifications.cancelScheduledNotificationAsync(n.identifier)));
+    const have = new Set(existing.map((n) => n.identifier));
+    for (const w of wanted) {
+      if (have.has(w.id)) continue;
+      await Notifications.scheduleNotificationAsync({
+        identifier: w.id,
+        content: { title: w.title, body: w.body, data: w.data, sound: 'default', categoryIdentifier: w.category },
+        trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: w.at, channelId: 'default' },
+      });
+    }
+  } catch {
+    // Non-fatal: reminders are a convenience on top of the in-app prompt.
+  }
 }

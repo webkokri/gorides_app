@@ -17,8 +17,10 @@ type Fix = { latitude: number; longitude: number; heading: number | null; speed:
  */
 export function TripBroadcaster() {
   const { user } = useAuth();
-  const { dataVersion, setBroadcast } = useStore();
-  const [instanceId, setInstanceId] = useState<number | null>(null);
+  const { dataVersion, setBroadcast, liveHint } = useStore();
+  const [foundId, setInstanceId] = useState<number | null>(null);
+  // a trip the driver has just started is shared at once, without waiting for the next check of the server
+  const instanceId = liveHint ?? foundId;
 
   const find = useCallback(async () => {
     if (!user || isCoolingDown() || AppState.currentState !== 'active') return;

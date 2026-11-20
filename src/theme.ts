@@ -19,8 +19,11 @@ export const C = {
 };
 
 export const F = {
-  display: 'Baloo2_800ExtraBold',
-  displayBold: 'Baloo2_700Bold',
+  display: 'Figtree_800ExtraBold',
+  displayBold: 'Figtree_700Bold',
+  // the rounded brand font, kept for the splash and the intro slides only
+  brand: 'Baloo2_800ExtraBold',
+  brandBold: 'Baloo2_700Bold',
   regular: 'Figtree_400Regular',
   medium: 'Figtree_500Medium',
   semi: 'Figtree_600SemiBold',
@@ -31,17 +34,11 @@ export const F = {
 export const R = { sm: 12, md: 16, lg: 20, xl: 24 };
 
 export const shadow = {
-  shadowColor: '#3C1E0A',
-  shadowOpacity: 0.12,
-  shadowRadius: 18,
-  shadowOffset: { width: 0, height: 10 },
-  elevation: 6,
+  shadowColor: '#000',
+  shadowOpacity: 0.05,
+  shadowRadius: 8,
+  shadowOffset: { width: 0, height: 2 },
+  elevation: 2,
 };
 
-export const glow = {
-  shadowColor: C.o,
-  shadowOpacity: 0.45,
-  shadowRadius: 14,
-  shadowOffset: { width: 0, height: 8 },
-  elevation: 8,
-};
+export const glow = {};

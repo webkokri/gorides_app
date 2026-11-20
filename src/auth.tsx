@@ -1,7 +1,8 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { Alert } from 'react-native';
 import { router } from 'expo-router';
 import { ApiUser, AuthResult, auth, loadToken, saveToken, setUnauthorizedHandler } from './lib/api';
-import { registerForPushNotifications, unregisterPushNotifications } from './lib/push';
+import { addPushListener, forgetPushToken, registerForPushNotifications, unregisterPushNotifications } from './lib/push';
 
 type Ctx = {
   user: ApiUser | null;
@@ -23,10 +24,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    setUnauthorizedHandler(() => {
+    // one device per account: when the account is signed in somewhere else this device is signed out at once, with the reason
+    let told = false;
+    const signedOutElsewhere = () => {
+      forgetPushToken();
+      clear();
+      router.replace('/signin');
+      if (!told) {
+        told = true;
+        Alert.alert('Signed out', 'Your account was signed in on another device, so you were signed out here.', [{ text: 'OK', onPress: () => (told = false) }]);
+      }
+    };
+    setUnauthorizedHandler((replaced) => {
+      if (replaced) return signedOutElsewhere();
       clear();
       router.replace('/signin');
     });
+    // a background device is told by push straight away
+    const stopPush = addPushListener((d) => d?.type === 'session_replaced' && signedOutElsewhere());
     (async () => {
       if (await loadToken()) {
         try {
@@ -38,7 +53,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       setReady(true);
     })();
-    return () => setUnauthorizedHandler(null);
+    return () => {
+      setUnauthorizedHandler(null);
+      stopPush();
+    };
   }, [clear]);
 
   const accept = useCallback(async (r: AuthResult) => {

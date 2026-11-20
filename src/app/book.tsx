@@ -137,7 +137,7 @@ export default function Book() {
     : [{ t: r.from, s: `${r.fromS} · ${t12(r.dep)}` }];
 
   return (
-    <Screen>
+    <Screen bottom={false}>
       <StatusBar style="dark" />
       <TopBar title="Confirm booking" />
       <ScrollView contentContainerStyle={{ paddingBottom: 20 }} keyboardShouldPersistTaps="handled">

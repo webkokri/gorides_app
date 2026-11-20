@@ -1,9 +1,8 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { Linking, StyleSheet, useWindowDimensions } from 'react-native';
-import { Image } from 'expo-image';
+import React, { useCallback, useState } from 'react';
+import { Linking } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { Btn, Card, Row, T } from './ui';
-import { bookings, settings } from '../lib/api';
+import { bookings } from '../lib/api';
 import { connectTrackingSocket } from '../lib/trackingSocket';
 import { useNow } from '../lib/useNow';
 import { C } from '../theme';
@@ -37,11 +36,6 @@ export default function LiveTracking({
   const phase: 'before' | 'during' | 'after' = running ? 'during' : !win ? 'during' : now < win.start.getTime() ? 'before' : now > win.end.getTime() ? 'after' : 'during';
   const [point, setPoint] = useState<Point | null>(null);
   const [live, setLive] = useState(false);
-  const [mapToken, setMapToken] = useState('');
-  const { width } = useWindowDimensions();
-  useEffect(() => {
-    settings.map().then((m) => setMapToken(m.mapboxAccessToken ?? '')).catch(() => {});
-  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -82,16 +76,6 @@ export default function LiveTracking({
     }, [bookingId, rideInstanceId, running]),
   );
 
-  const mapW = Math.min(640, Math.round(width - 64));
-  const overlays = point
-    ? [
-        `pin-l-car+f47a20(${point.longitude},${point.latitude})`,
-        pickup ? `pin-s-circle+2f6fe4(${pickup.lng},${pickup.lat})` : '',
-        destination ? `pin-s-star+1b1a1f(${destination.lng},${destination.lat})` : '',
-      ].filter(Boolean)
-    : [];
-  // "auto" fits the car, the pickup and the destination in one view
-  const mapUrl = point && mapToken ? `https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/${overlays.join(',')}/auto/${mapW}x240@2x?padding=48&access_token=${mapToken}` : null;
   const fmt = (d: Date) => d.toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
   const ageSec = point ? Math.max(0, Math.round((now - new Date(point.recorded_at).getTime()) / 1000)) : 0;
   const stale = ageSec > 45;
@@ -116,7 +100,6 @@ export default function LiveTracking({
         </T>
       ) : point ? (
         <>
-          {mapUrl ? <Image source={{ uri: mapUrl }} style={styles.map} transition={250} accessibilityLabel="Map with the car, your pickup point and the destination" /> : null}
           <T size={13} color={stale ? C.warn : C.ink2}>
             {stale ? `Last location ${ageSec >= 120 ? `${Math.round(ageSec / 60)} min` : `${ageSec} s`} ago. The driver's phone may be offline or out of signal.` : `Updated ${ageSec} s ago`}
             {point.speed != null && point.speed > 0.5 ? ` · ${Math.round(point.speed * 3.6)} km/h` : ''}
@@ -132,6 +115,3 @@ export default function LiveTracking({
   );
 }
 
-const styles = StyleSheet.create({
-  map: { width: '100%', height: 200, borderRadius: 14, backgroundColor: '#E8E4DF' },
-});

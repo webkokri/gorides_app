@@ -2,6 +2,7 @@ import React, { useCallback, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BankAccountCard } from '../components/BankAccounts';
 import { ConfirmCancel } from '../components/ConfirmCancel';
 import { Icon } from '../components/Icon';
@@ -13,6 +14,7 @@ import { C } from '../theme';
 /** The bank accounts a person has saved, to cash out the wallet, receive driver payouts and receive refunds. */
 export default function BankAccounts() {
   const { toast } = useStore();
+  const insets = useSafeAreaInsets();
   const [list, setList] = useState<BankAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [removing, setRemoving] = useState<BankAccount | null>(null);
@@ -47,7 +49,7 @@ export default function BankAccounts() {
   };
 
   return (
-    <Screen>
+    <Screen bottom={false}>
       <StatusBar style="dark" />
       <TopBar title="Bank accounts" />
       {loading ? (
@@ -91,7 +93,7 @@ export default function BankAccounts() {
         </ScrollView>
       )}
       {list.length || loading ? null : (
-        <View style={styles.sticky}>
+        <View style={[styles.sticky, { paddingBottom: insets.bottom + 16 }]}>
           <Btn label="Add a bank account" icon="plus" onPress={() => router.push('/add-bank-account')} />
         </View>
       )}

@@ -50,11 +50,12 @@ export async function loadDriverTrip(rideId: number, day: string, instanceId?: n
     stop,
   }));
 
-  const sched = (ride.pickup_schedules ?? []).filter((p) => p.location_type === 'pickup').sort((a, c) => (a.sequence_order ?? 0) - (c.sequence_order ?? 0));
-  let stops: Stop[] = sched.filter((p) => num(p.location_latitude) && num(p.location_longitude)).map((p) => ({ name: p.location_name, lat: Number(p.location_latitude), lng: Number(p.location_longitude) }));
+  // the stops are the confirmed passengers' pickup points in driving order; a ride with none booked yet falls back to its published pickup points
+  const picks = sorted.map((x) => x.stop as Stop);
+  let stops: Stop[] = picks.filter((p, i) => picks.findIndex((q) => Math.abs(q.lat - p.lat) < 1e-4 && Math.abs(q.lng - p.lng) < 1e-4) === i);
   if (!stops.length) {
-    const picks = sorted.map((x) => x.stop as Stop);
-    stops = picks.filter((p, i) => picks.findIndex((q) => Math.abs(q.lat - p.lat) < 1e-4 && Math.abs(q.lng - p.lng) < 1e-4) === i);
+    const sched = (ride.pickup_schedules ?? []).filter((p) => p.location_type === 'pickup').sort((a, c) => (a.sequence_order ?? 0) - (c.sequence_order ?? 0));
+    stops = sched.filter((p) => num(p.location_latitude) && num(p.location_longitude)).map((p) => ({ name: p.location_name, lat: Number(p.location_latitude), lng: Number(p.location_longitude) }));
   }
   return { origin, stops: stops.slice(0, 9), destination, passengers };
 }

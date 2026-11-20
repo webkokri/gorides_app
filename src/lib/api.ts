@@ -7,9 +7,9 @@ const KEY = 'gorides.token';
 const RKEY = 'gorides.refresh';
 let token: string | null = null;
 let refreshToken: string | null = null;
-let onUnauthorized: (() => void) | null = null;
+let onUnauthorized: ((replaced?: boolean) => void) | null = null;
 
-export const setUnauthorizedHandler = (fn: (() => void) | null) => {
+export const setUnauthorizedHandler = (fn: ((replaced?: boolean) => void) | null) => {
   onUnauthorized = fn;
 };
 
@@ -54,7 +54,11 @@ const inflight = new Map<string, { at: number; p: Promise<any> }>();
 
 export function api<T = any>(path: string, opts: Opts = {}): Promise<T> {
   const { method = 'GET', ttl = 0 } = opts;
-  if (method !== 'GET') return send<T>(path, opts);
+  // an action (publish, book, start...) changes server data, so nothing cached before it may be shown after it
+  if (method !== 'GET') {
+    inflight.clear();
+    return send<T>(path, opts).finally(() => inflight.clear());
+  }
   const key = `${opts.auth === false ? 'p' : token ?? ''}|${path}|${JSON.stringify(opts.query ?? {})}`;
   const hit = inflight.get(key);
   // `at === 0` means still in flight (dedupe concurrent calls to the same
@@ -134,7 +138,7 @@ async function send<T>(path: string, { method = 'GET', body, query, auth = true 
   // a 404 that is not JSON is the web server's own "page not found": the endpoint is not deployed
   if (res.status === 404 && json === null) throw new ApiError(UNAVAILABLE, 404);
   if (!res.ok || json?.success === false) {
-    if (res.status === 401 && auth && token) onUnauthorized?.();
+    if (res.status === 401 && auth && token) onUnauthorized?.(json?.code === 'session_replaced');
     // the error text is in `error` (or the field map `errors`), never `message`
     const fields = json?.errors ? Object.values(json.errors).join(' ') : '';
     throw new ApiError(json?.error || fields || `Request failed (${res.status})`, res.status);
@@ -153,6 +157,9 @@ export const auth = {
   register: (b: { email: string; password: string; first_name: string; last_name: string; mobile_number: string; profile_type?: 'driver' | 'passenger' }) =>
     api<AuthResult>('/auth/register', { method: 'POST', body: b, auth: false }),
   me: () => api<ApiUser>('/auth/me'),
+  verificationStatus: () => api<{ blocked: boolean; mobile: { required: boolean; verified: boolean; hasMobileNumber: boolean } }>('/auth/verification-status'),
+  /** Sends a code to the signed-in person's own number (the server looks it up) to verify it. */
+  sendMobileVerification: () => api('/auth/send-otp', { method: 'POST', body: { purpose: 'mobile_verification' } }),
   logout: () => api('/auth/logout', { method: 'POST' }),
   // OTP signup: send-otp -> verify-otp -> complete-registration. Always pass `email` so delivery works when SMS is off.
   sendOtp: (mobile_number: string, email?: string) => api('/auth/send-otp', { method: 'POST', body: { mobile_number, email, purpose: 'registration' }, auth: false }),
@@ -186,7 +193,7 @@ export const rides = {
   search: (q: { ride_type?: 'local' | 'intercity'; date_from?: string; date_to?: string; min_seats_available?: number; max_price?: number; start_lat?: number; start_lng?: number; end_lat?: number; end_lng?: number; radius_km?: number }) =>
     api<ApiRide[]>('/rides/search', { query: q, auth: false, ttl: 30000 }),
   get: (id: number | string) => api<ApiRide>(`/rides/${id}`, { auth: false, ttl: 15000 }),
-  mine: () => api<ApiRide[]>('/rides/my-rides'),
+  mine: () => api<ApiRide[]>('/rides/my-rides', { ttl: 4000 }),
   /** Driver edits their own ride (title, description, seats, price, booking mode...). */
   update: (id: number, b: Partial<{ title: string; description: string; total_seats: number; price_per_seat: number; booking_mode: 'instant' | 'request'; luggage_size: string; back_seat_max: number; amenities: string[]; vehicle_make: string; vehicle_model: string; vehicle_year: number | null; vehicle_color: string; license_plate: string }>) =>
     api(`/rides/${id}`, { method: 'PUT', body: b }),
@@ -233,7 +240,7 @@ export const rides = {
 };
 
 export const bookings = {
-  mine: (role: 'passenger' | 'driver' | 'all' = 'all', status = 'all') => api<ApiBooking[]>('/bookings/my-bookings', { query: { role, status } }),
+  mine: (role: 'passenger' | 'driver' | 'all' = 'all', status = 'all') => api<ApiBooking[]>('/bookings/my-bookings', { query: { role, status }, ttl: 4000 }),
   get: (id: number) => api<BookingDetail>(`/bookings/${id}`),
   /** Oldest first. Passing `afterId` returns only newer messages; fetching also marks the other side's messages read. */
   messages: (id: number, afterId?: number) => api<ChatMessage[]>(`/bookings/${id}/messages`, { query: { after_id: afterId } }),
@@ -301,6 +308,8 @@ export const support = {
 export const drivers = {
   earnings: (period?: 'today' | 'week' | 'month') => api<{ summary: EarningsSummary; earnings: unknown[] }>('/drivers/me/earnings', { query: { period } }),
   payouts: () => api<Payout[]>('/drivers/me/payouts'),
+  /** The phone's position, reported every 30 to 60 minutes while the driver has upcoming trips. */
+  pingLocation: (latitude: number, longitude: number) => api('/drivers/me/location', { method: 'POST', body: { latitude, longitude } }),
   requestPayout: (b: { amount: number; payment_method: 'bank_transfer' | 'paypal' | 'stripe' | 'cash'; bank_account_id?: number; bank_account_last4?: string; paypal_email?: string; notes?: string }) =>
     api('/drivers/me/payouts', { method: 'POST', body: b }),
 };

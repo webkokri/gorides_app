@@ -46,7 +46,7 @@ const initial: AppState = {
 
 export type Broadcast = { instanceId: number | null; lastAt: number; error: string };
 
-type Ctx = { broadcast: Broadcast; setBroadcast: (b: Partial<Broadcast>) => void; s: AppState; set: (p: Partial<AppState>) => void; toast: (msg: string) => void; contactMode: 'public' | 'private'; unread: number; refreshUnread: () => void; dataVersion: number; bumpData: () => void };
+type Ctx = { liveHint: number | null; hintLive: (id: number | null) => void; broadcast: Broadcast; setBroadcast: (b: Partial<Broadcast>) => void; s: AppState; set: (p: Partial<AppState>) => void; toast: (msg: string) => void; contactMode: 'public' | 'private'; unread: number; refreshUnread: () => void; dataVersion: number; bumpData: () => void };
 const StoreCtx = createContext<Ctx | null>(null);
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
@@ -54,6 +54,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const set = useCallback((p: Partial<AppState>) => setS((prev) => ({ ...prev, ...p })), []);
   const [toastItem, setToastItem] = useState<ToastItem | null>(null);
   // is this phone currently sharing the driver's location, and did the last update reach the server?
+  // the trip the driver has just started or completed: location sharing reacts at once instead of waiting for the next check
+  const [liveHint, hintLive] = useState<number | null>(null);
   const [broadcast, setBroadcastState] = useState<Broadcast>({ instanceId: null, lastAt: 0, error: '' });
   const setBroadcast = useCallback((b: Partial<Broadcast>) => setBroadcastState((prev) => ({ ...prev, ...b })), []);
   const insets = useSafeAreaInsets();
@@ -103,7 +105,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [dataVersion, setDataVersion] = useState(0);
   const bumpData = useCallback(() => setDataVersion((v) => v + 1), []);
 
-  const value = useMemo(() => ({ broadcast, setBroadcast, s, set, toast, contactMode, unread: user ? unread : 0, refreshUnread, dataVersion, bumpData }), [broadcast, setBroadcast, s, set, toast, contactMode, unread, user, refreshUnread, dataVersion, bumpData]);
+  const value = useMemo(() => ({ liveHint, hintLive, broadcast, setBroadcast, s, set, toast, contactMode, unread: user ? unread : 0, refreshUnread, dataVersion, bumpData }), [liveHint, broadcast, setBroadcast, s, set, toast, contactMode, unread, user, refreshUnread, dataVersion, bumpData]);
   return (
     <StoreCtx.Provider value={value}>
       {children}

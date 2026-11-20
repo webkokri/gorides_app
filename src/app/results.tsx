@@ -164,7 +164,7 @@ export default function Results() {
                     {i === 0 ? `NOTHING ON ${fmtDay(s.date).toUpperCase()}. OTHER DAYS` : 'OTHER DAYS'}
                   </T>
                 ) : null}
-                <RideCard ride={r} local={tab === 'local'} isOwn={isOwn(r)} showDate={r.day !== d} onPress={() => open(r)} />
+                <RideCard ride={r} local={tab === 'local'} isOwn={isOwn(r)} showDate={r.day !== d} onOpen={open} />
               </React.Fragment>
             ))
           ) : (

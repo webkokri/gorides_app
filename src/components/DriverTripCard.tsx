@@ -1,15 +1,16 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { Animated, Easing, Pressable, StyleSheet, View } from 'react-native';
+import React, { useCallback, useState } from 'react';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { useAuth } from '../auth';
 import { ApiBooking, ApiRide, bookings, isCoolingDown, rides } from '../lib/api';
-import { t12 } from '../lib/format';
+import { isoDate, t12, today } from '../lib/format';
 import { START_GRACE_MS, tripDate, tripWindow } from '../lib/rideMap';
-import { dayOf } from '../lib/trips';
+import { dayOf, isPast } from '../lib/trips';
 import { useNow } from '../lib/useNow';
 import { useStore } from '../store';
 import { C, glow } from '../theme';
 import { Icon } from './Icon';
+import { ReturnToTripBtn } from './ReturnToTripBtn';
 import { Btn, Row, T } from './ui';
 
 type Trip = { instanceId: number; ride: ApiRide; status: string; start: Date; end: Date; day: string; time: string };
@@ -24,13 +25,7 @@ export function DriverTripCard() {
   const now = useNow(30000);
   const [mine, setMine] = useState<ApiRide[]>([]);
   const [asDriver, setAsDriver] = useState<ApiBooking[]>([]);
-  const [pulse] = useState(() => new Animated.Value(0));
 
-  useEffect(() => {
-    const loop = Animated.loop(Animated.sequence([Animated.timing(pulse, { toValue: 1, duration: 900, easing: Easing.inOut(Easing.quad), useNativeDriver: true }), Animated.timing(pulse, { toValue: 0, duration: 900, easing: Easing.inOut(Easing.quad), useNativeDriver: true })]));
-    loop.start();
-    return () => loop.stop();
-  }, [pulse]);
 
   useFocusEffect(
     useCallback(() => {
@@ -56,28 +51,57 @@ export function DriverTripCard() {
       })
       .filter((t): t is Trip => !!t),
   );
-  const due = trips
-    .filter((t) => t.status === 'in_progress' || (now >= t.start.getTime() - START_GRACE_MS && now <= t.start.getTime() + START_GRACE_MS))
-    .sort((a, b) => (a.status === 'in_progress' ? -1 : 1) - (b.status === 'in_progress' ? -1 : 1) || a.start.getTime() - b.start.getTime())[0];
+  // A trip under way also comes from the driver's own bookings, so a started trip stays on Home even when the rides list does not carry it.
+  const known = new Set(trips.map((t) => t.instanceId));
+  for (const b of asDriver) {
+    if (b.instance_status !== 'in_progress' || !b.ride_instance_id || known.has(b.ride_instance_id) || !b.ride_id) continue;
+    known.add(b.ride_instance_id);
+    trips.push({
+      instanceId: b.ride_instance_id,
+      ride: { id: b.ride_id, title: b.title, start_location_name: b.start_name, end_location_name: b.end_name } as ApiRide,
+      status: 'in_progress',
+      start: new Date(),
+      end: new Date(),
+      day: dayOf(b),
+      time: (b.departure_time ?? '').slice(0, 5),
+    });
+  }
 
-  if (!user || !due) return null;
+  // every trip under way, then the next one that is due to start
+  // one ride at a time: while a trip is under way the next one is not offered until it is completed
+  const anyRunning = trips.some((t) => t.status === 'in_progress');
+  const soon = anyRunning ? undefined : trips
+    .filter((t) => t.status !== 'in_progress' && now >= t.start.getTime() - START_GRACE_MS && now <= t.start.getTime() + 12 * 3600e3)
+    .sort((a, b) => a.start.getTime() - b.start.getTime())[0];
+  const list = [...trips.filter((t) => t.status === 'in_progress'), ...(soon ? [soon] : [])];
+  if (!user || !list.length) return null;
+  return (
+    <>
+      {list.map((t) => (
+        <DriverCard key={t.instanceId} due={t} asDriver={asDriver} now={now} broadcast={broadcast} />
+      ))}
+    </>
+  );
+}
 
+function DriverCard({ due, asDriver, now, broadcast }: { due: Trip; asDriver: ApiBooking[]; now: number; broadcast: { instanceId: number | null; lastAt: number; error: string } }) {
   const passengers = asDriver.filter((b) => b.ride_id === due.ride.id && dayOf(b) === due.day && b.status === 'confirmed');
   const seats = passengers.reduce((n, b) => n + b.seats_booked, 0);
   const running = due.status === 'in_progress';
   // nobody has booked (not even a request): the whole ride can still be edited, e.g. when the time was missed
-  const anyBooked = asDriver.some((b) => b.ride_id === due.ride.id && (b.status === 'pending' || b.status === 'confirmed'));
+  const anyBooked = asDriver.some((b) => b.ride_id === due.ride.id && (b.status === 'pending' || b.status === 'confirmed') && !isPast(b, isoDate(today())));
   const late = !running && now >= due.start.getTime();
   const route = due.ride.title ?? `${due.ride.start_location_name ?? ''} → ${due.ride.end_location_name ?? ''}`;
 
+  const openTrip = () => router.push({ pathname: '/driver-trip', params: { rideId: String(due.ride.id), instanceId: String(due.instanceId), day: due.day } });
+
   return (
     <View style={styles.wrap}>
-      <Animated.View pointerEvents="none" style={[styles.halo, { opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.25, 0.8] }), transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.025] }) }] }]} />
       <View style={styles.card}>
         <Row style={{ gap: 10 }}>
-          <Animated.View style={[styles.ic, { transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.15] }) }] }]}>
+          <View style={styles.ic}>
             <Icon name={running ? 'pin' : 'bolt'} color="#fff" />
-          </Animated.View>
+          </View>
           <View style={{ flex: 1 }}>
             <T w="xbold" size={16} color="#fff">
               {running ? 'Your trip is in progress' : late ? 'Time to start your trip!' : 'Your trip is coming up'}
@@ -101,12 +125,16 @@ export function DriverTripCard() {
                   : '● Starting to share your location…'}
           </T>
         ) : null}
-        <Pressable accessibilityRole="button" onPress={() => router.push({ pathname: '/driver-trip', params: { rideId: String(due.ride.id), instanceId: String(due.instanceId), day: due.day } })} style={styles.go}>
-          <Icon name={running ? 'route' : 'play'} size={18} color={C.oDeep} />
-          <T w="bold" size={14} color={C.oDeep}>
-            {running ? 'Open trip' : 'Start trip'}
-          </T>
-        </Pressable>
+        {running ? (
+          <ReturnToTripBtn onPress={openTrip} />
+        ) : (
+          <Pressable accessibilityRole="button" onPress={openTrip} style={styles.go}>
+            <Icon name="play" size={18} color={C.oDeep} />
+            <T w="bold" size={14} color={C.oDeep}>
+              Start trip
+            </T>
+          </Pressable>
+        )}
         {!running && !anyBooked ? (
           <Btn label="Edit ride" icon="edit" kind="dark" small style={{ backgroundColor: 'rgba(255,255,255,0.22)' }} onPress={() => router.push({ pathname: '/publish', params: { edit: String(/\(Return\)$/.test(due.ride.title ?? '') && due.ride.return_ride_id ? due.ride.return_ride_id : due.ride.id) } })} />
         ) : null}

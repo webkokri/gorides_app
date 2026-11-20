@@ -7,10 +7,10 @@ import { C } from '../theme';
 import { Icon, IconName } from './Icon';
 import { Avatar, Card, Tag, T } from './ui';
 
-export function RideCard({ ride, local, onPress, isOwn, showDate }: { ride: Ride; local: boolean; onPress: () => void; isOwn?: boolean; showDate?: boolean }) {
+function RideCardBase({ ride, local, onOpen, isOwn, showDate }: { ride: Ride; local: boolean; onOpen: (r: Ride) => void; isOwn?: boolean; showDate?: boolean }) {
   const full = ride.seats === 0;
   return (
-    <Card style={[styles.card, full && { opacity: 0.55 }]} onPress={onPress}>
+    <Card style={[styles.card, full && { opacity: 0.55 }]} onPress={() => onOpen(ride)}>
       {showDate && ride.day ? (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           <Icon name="calendar" size={14} color={C.oDeep} />
@@ -114,7 +114,7 @@ function Stop({ time, place, sub, end }: { time: string; place: string; sub: str
 }
 
 const styles = StyleSheet.create({
-  card: { padding: 16, gap: 14 },
+  card: { padding: 16, paddingBottom: 0, gap: 14, overflow: 'hidden' },
   tm: { flexDirection: 'row', gap: 12 },
   feats: { flexDirection: 'row', gap: 5, flexWrap: 'wrap' },
   feat: { width: 20, height: 20, borderRadius: 10, backgroundColor: C.chip, alignItems: 'center', justifyContent: 'center' },
@@ -125,5 +125,9 @@ const styles = StyleSheet.create({
   midRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   line: { width: 3, height: 22, backgroundColor: C.ink, borderRadius: 2, marginLeft: 4.5 },
   tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  dv: { flexDirection: 'row', alignItems: 'center', gap: 10, borderTopWidth: 1, borderStyle: 'dashed', borderTopColor: C.line, paddingTop: 12 },
+  // the driver and seats strip: a light band across the bottom of the card shows where the card ends
+  dv: { flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: -16, paddingHorizontal: 16, paddingVertical: 12, backgroundColor: C.oSoft, borderTopWidth: 1, borderTopColor: C.oTint },
 });
+
+// lists of many cards only redraw the cards whose ride actually changed
+export const RideCard = React.memo(RideCardBase);

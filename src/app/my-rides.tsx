@@ -41,7 +41,7 @@ export default function MyRides() {
 
   if (!user)
     return (
-      <Screen>
+      <Screen bottom={false}>
         <StatusBar style="dark" />
         <TopBar big title="My rides" />
         <SignInPrompt />
@@ -50,7 +50,7 @@ export default function MyRides() {
     );
 
   return (
-    <Screen>
+    <Screen bottom={false}>
       <StatusBar style="dark" />
       <TopBar big title="My rides" right={<IconBtn name="plus" label="Publish a ride" onPress={() => router.push('/publish')} />} />
       <TripTabs

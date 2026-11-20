@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Alert } from 'react-native';
+import { Alert, Pressable, StyleSheet } from 'react-native';
 import * as Location from 'expo-location';
-import { Btn } from './ui';
+import { Icon } from './Icon';
 import { sos } from '../lib/api';
 import { useStore } from '../store';
 import { C } from '../theme';
@@ -43,16 +43,14 @@ export default function SosButton({ bookingId }: { bookingId?: number }) {
     ]);
   };
 
-  // Btn is full-width by default, which squeezed the neighbouring text out of the card; this one is a compact, fixed-size pill
+  // icon only: a compact red round button with the alert icon and no text
   return (
-    <Btn
-      label={sending ? 'Sending…' : 'SOS'}
-      icon="alert"
-      kind="dark"
-      small
-      disabled={sending}
-      onPress={confirm}
-      style={{ width: undefined, flexShrink: 0, alignSelf: 'center', height: 38, paddingHorizontal: 14, gap: 6, backgroundColor: C.bad }}
-    />
+    <Pressable onPress={confirm} disabled={sending} accessibilityRole="button" accessibilityLabel="Send SOS alert" hitSlop={6} style={[styles.btn, sending && { opacity: 0.5 }]}>
+      <Icon name="alert" size={20} color="#fff" />
+    </Pressable>
   );
 }
+
+const styles = StyleSheet.create({
+  btn: { width: 40, height: 40, borderRadius: 20, backgroundColor: C.bad, alignItems: 'center', justifyContent: 'center', flexShrink: 0, alignSelf: 'center' },
+});
