@@ -6,6 +6,7 @@ import { PRIVACY_URL, SAFETY_URL, SERVICE_FEE_PERCENT, TERMS_URL } from '../lib/
 import { C } from '../theme';
 
 const POINTS: [string, string][] = [
+  ['Deleting your account', 'You can delete your account in Profile > Delete account. We erase your profile, photo, contact details and saved bank accounts. As the law requires, we keep payment, booking and accounting records for up to 7 years, without your name or contact details attached. We also keep a one-way coded fingerprint of your email and phone number for up to 7 years so that accounts removed for safety or fraud reasons cannot simply re-register. Retained data is used only for legal, tax, safety and dispute purposes, then destroyed.'],
   ['A private rideshare', "GORIDES is a private rideshare platform for sharing travel expenses between people already making a journey. It is not a taxi, a transportation carrier or a commercial passenger service, and it can't be used for commercial purposes as per government law."],
   ['Independent drivers', 'Drivers are independent private members. GORIDES does not employ drivers, own the vehicles, or control how a trip is driven.'],
   ['Our limited role', 'GORIDES only connects members and processes payments made through the app. To the extent permitted by law, GORIDES is not liable for the conduct of drivers or passengers, accidents, delays, cancellations, lost belongings or any other loss, injury or damage during or around a shared trip.'],
