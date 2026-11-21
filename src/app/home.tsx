@@ -183,7 +183,7 @@ export default function Home() {
         <T size={12} color={C.muted} style={{ marginHorizontal: 20, marginTop: 8 }}>
           {kind === 'monthly' ? 'Rides that run 20 or more days a month. Next trips to start first.' : 'Next trips to start first.'}
         </T>
-        <View style={{ paddingHorizontal: 16, gap: 12, marginTop: 10 }}>
+        <View style={{ paddingHorizontal: 16, gap: 10, marginTop: 8 }}>
           {nearLoading ? (
             <ActivityIndicator color={C.o} style={{ marginVertical: 24 }} />
           ) : visible.length ? (

@@ -10,22 +10,33 @@ import { Avatar, Card, Tag, T } from './ui';
 
 function RideCardBase({ ride, local, onOpen, isOwn, showDate }: { ride: Ride; local: boolean; onOpen: (r: Ride) => void; isOwn?: boolean; showDate?: boolean }) {
   const full = ride.seats === 0;
+  const seatColor = full ? C.muted : ride.seats === 1 ? C.warn : C.good;
+  const hasHead = !!(showDate && ride.day) || isOwn || ride.monthly || ride.away || ride.instant || ride.tags.includes('Round trip');
   return (
     <Card style={[styles.card, full && { opacity: 0.55 }]} onPress={() => onOpen(ride)}>
-      {showDate && ride.day ? (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <Icon name="calendar" size={14} color={C.oDeep} />
-          <T w="bold" size={13} color={C.oDeep}>
-            {ride.monthly ? 'Starts ' : ''}
-            {fmtDay(new Date(`${ride.day}T00:00:00`))}
-          </T>
+      {hasHead ? (
+        <View style={styles.head}>
+          {showDate && ride.day ? (
+            <View style={styles.date}>
+              <Icon name="calendar" size={12} color={C.oDeep} />
+              <T w="bold" size={12} color={C.oDeep}>
+                {ride.monthly ? 'Starts ' : ''}
+                {fmtDay(new Date(`${ride.day}T00:00:00`))}
+              </T>
+            </View>
+          ) : null}
+          {isOwn ? <Tag label="Your published ride" tone="o" /> : null}
+          {ride.monthly ? <Tag label="Monthly" icon="calendar" tone="g" /> : null}
+          {ride.instant ? <Tag label="Instant" icon="bolt" tone="o" /> : null}
+          {ride.away ? <Tag label={ride.away} icon="pin" /> : null}
+          {ride.tags.includes('Round trip') ? <Tag label="Round trip" /> : null}
         </View>
       ) : null}
       <View style={styles.tm}>
-        <View style={{ flex: 1, gap: 2 }}>
+        <View style={{ flex: 1, gap: 1 }}>
           <Stop time={ride.dep} place={ride.from} sub={ride.fromS} />
           <View style={styles.midRow}>
-            <T w="semi" size={11} color={C.muted} style={{ width: 48 }}>
+            <T w="semi" size={10} color={C.muted} style={{ width: 42 }}>
               {ride.dur}
             </T>
             <View style={styles.line} />
@@ -33,45 +44,36 @@ function RideCardBase({ ride, local, onOpen, isOwn, showDate }: { ride: Ride; lo
           <Stop time={ride.arr} place={ride.to} sub={ride.toS} end />
         </View>
         <View style={styles.price}>
-          <T w="xbold" size={22} color={C.oDeep} style={full ? { textDecorationLine: 'line-through' } : undefined}>
+          <T w="xbold" size={18} color={C.oDeep} style={full ? { textDecorationLine: 'line-through' } : undefined}>
             ${seatShare(ride, 1).now.toFixed(2)}
           </T>
-          <T size={11} color={C.muted}>
+          <T size={10} color={C.muted}>
             {local ? 'per rider' : 'per seat'}
           </T>
         </View>
       </View>
-      <View style={styles.tags}>
-        {isOwn ? <Tag label="Your published ride" tone="o" /> : null}
-        {ride.monthly ? <Tag label="Monthly ride" icon="calendar" tone="g" /> : null}
-        {ride.away ? <Tag label={ride.away} icon="pin" /> : null}
-        {ride.instant ? <Tag label="Instant" icon="bolt" tone="o" /> : null}
-        {ride.tags.filter((t) => t === 'Round trip').map((t) => (
-          <Tag key={t} label={t} />
-        ))}
-      </View>
-      <View style={styles.feats}>
-        {rideFeatures(ride).map((f) => (
-          <FeatureIcon key={f.icon} {...f} size={26} />
-        ))}
-      </View>
-      <View style={styles.dv}>
-        <Avatar name={ride.driver} size={40} uri={ride.avatar} verified={!!ride.verified} />
-        <View style={{ flex: 1 }}>
-          <T w="bold" size={14}>
-            {ride.driver}
-          </T>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-            {ride.rev ? <Icon name="star" size={13} color={C.star} fill /> : null}
-            <T size={12} color={C.muted}>
-              {ride.rev ? `${ride.rating.toFixed(1)} · ${ride.rev} review${ride.rev > 1 ? 's' : ''}` : 'New driver'}
-            </T>
-          </View>
+      <View style={styles.mid}>
+        <View style={styles.feats}>
+          {rideFeatures(ride).map((f) => (
+            <FeatureIcon key={f.icon} {...f} size={22} />
+          ))}
         </View>
         <View style={[styles.seats, { backgroundColor: full ? C.chip : ride.seats === 1 ? '#FFF4D6' : C.goodSoft }]}>
-          <Icon name="users" size={13} color={full ? C.muted : ride.seats === 1 ? C.warn : C.good} />
-          <T w="bold" size={12} color={full ? C.muted : ride.seats === 1 ? C.warn : C.good}>
+          <Icon name="users" size={12} color={seatColor} />
+          <T w="bold" size={11} color={seatColor}>
             {full ? 'Full' : `${ride.seats} seat${ride.seats > 1 ? 's' : ''} left`}
+          </T>
+        </View>
+      </View>
+      <View style={styles.dv}>
+        <Avatar name={ride.driver} size={28} uri={ride.avatar} verified={!!ride.verified} />
+        <T w="bold" size={13} numberOfLines={1} style={{ flexShrink: 1 }}>
+          {ride.driver}
+        </T>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+          {ride.rev ? <Icon name="star" size={12} color={C.star} fill /> : null}
+          <T size={11} color={C.muted}>
+            {ride.rev ? `${ride.rating.toFixed(1)} (${ride.rev})` : 'New driver'}
           </T>
         </View>
       </View>
@@ -82,35 +84,39 @@ function RideCardBase({ ride, local, onOpen, isOwn, showDate }: { ride: Ride; lo
 function Stop({ time, place, sub, end }: { time: string; place: string; sub: string; end?: boolean }) {
   return (
     <View style={styles.stop}>
-      <T w="xbold" size={16} style={{ width: 48 }}>
+      <T w="xbold" size={14} style={{ width: 42 }}>
         {time}
       </T>
       <View style={[styles.dot, end && { backgroundColor: C.ink }]} />
       <View style={{ flex: 1, minWidth: 0 }}>
-        <T w="bold" size={14} numberOfLines={1}>
+        <T w="bold" size={13} numberOfLines={1}>
           {place}
         </T>
-        <T size={12} color={C.muted} numberOfLines={1}>
-          {sub}
-        </T>
+        {sub ? (
+          <T size={11} color={C.muted} numberOfLines={1}>
+            {sub}
+          </T>
+        ) : null}
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  card: { padding: 16, paddingBottom: 0, gap: 14, overflow: 'hidden', borderLeftWidth: 5, borderLeftColor: C.o },
-  price: { alignItems: 'center', alignSelf: 'flex-start', backgroundColor: C.oSoft, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 8 },
-  seats: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
-  tm: { flexDirection: 'row', gap: 12 },
-  feats: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
-  stop: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  dot: { width: 12, height: 12, borderRadius: 6, borderWidth: 3, borderColor: C.ink, backgroundColor: C.card },
-  midRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  line: { width: 3, height: 22, backgroundColor: C.ink, borderRadius: 2, marginLeft: 4.5 },
-  tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  // the driver and seats strip: a light band across the bottom of the card shows where the card ends
-  dv: { flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: -16, marginLeft: -16, paddingHorizontal: 16, paddingVertical: 12, backgroundColor: C.oSoft, borderTopWidth: 1, borderTopColor: C.oTint },
+  card: { padding: 12, paddingBottom: 0, gap: 8, overflow: 'hidden', borderLeftWidth: 4, borderLeftColor: C.o },
+  head: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 5 },
+  date: { flexDirection: 'row', alignItems: 'center', gap: 4, marginRight: 2 },
+  price: { alignItems: 'center', alignSelf: 'flex-start', backgroundColor: C.oSoft, borderRadius: 12, paddingHorizontal: 9, paddingVertical: 5 },
+  seats: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3 },
+  tm: { flexDirection: 'row', gap: 10 },
+  mid: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  feats: { flexDirection: 'row', gap: 6, flexWrap: 'wrap', flexShrink: 1 },
+  stop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  dot: { width: 10, height: 10, borderRadius: 5, borderWidth: 2.5, borderColor: C.ink, backgroundColor: C.card },
+  midRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  line: { width: 2.5, height: 14, backgroundColor: C.ink, borderRadius: 2, marginLeft: 3.75 },
+  // the driver strip: a light band across the bottom of the card shows where the card ends
+  dv: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: -12, marginLeft: -12, paddingHorizontal: 12, paddingVertical: 7, backgroundColor: C.oSoft, borderTopWidth: 1, borderTopColor: C.oTint },
 });
 
 // lists of many cards only redraw the cards whose ride actually changed
