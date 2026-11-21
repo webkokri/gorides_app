@@ -31,10 +31,11 @@ export function SplashRoad({ width: W, height: H, cy }: { width: number; height:
     return Array.from({ length: 20 }, (_, i) => ({ a: (i / 20) * Math.PI * 2 + r() * 0.3, reach: 50 + r() * 50, size: 10 + r() * 10, delay: r() * 0.15 }));
   }, []);
   const x = W / 2;
-  const roadAlpha = 1 - 0.65 * unit((t - pass - 1) / 0.6);
+  const roadAlpha = 1 - 0.25 * unit((t - pass - 1) / 0.6); // the road stays clearly visible down to the bottom edge
+  const B = H + 240; // drawn well past the bottom, so no phone (gesture bar, nav bar, tall screens) ever shows a bare edge
 
   return (
-    <Svg width={W} height={H} pointerEvents="none">
+    <Svg width={W} height={B} style={{ position: 'absolute', top: 0, left: 0 }} pointerEvents="none">
       <CarDefs />
       <Defs>
         <RadialGradient id="spDust" cx="0.5" cy="0.5" r="0.5">
@@ -44,10 +45,11 @@ export function SplashRoad({ width: W, height: H, cy }: { width: number; height:
       </Defs>
 
       <G opacity={roadAlpha * unit(t / 0.3)}>
-        <Rect x={x - 62} y={0} width={124} height={H} fill="#1A1C2E" />
-        <Rect x={x - 62} y={0} width={3} height={H} fill="rgba(255,255,255,0.25)" />
-        <Rect x={x + 59} y={0} width={3} height={H} fill="rgba(255,255,255,0.25)" />
-        <Path d={`M${x} 0 V${H}`} stroke="#F2C14E" strokeWidth={3} strokeDasharray="22 18" />
+        {/* the road widens toward the bottom of the screen, with shoulders, edge lines and a dashed centre line */}
+        <Path d={`M${x - 150} ${B} L${x - 56} 0 L${x + 56} 0 L${x + 150} ${B} Z`} fill="#1A1C2E" />
+        <Path d={`M${x - 150} ${B} L${x - 56} 0`} stroke="rgba(255,255,255,0.35)" strokeWidth={3} />
+        <Path d={`M${x + 150} ${B} L${x + 56} 0`} stroke="rgba(255,255,255,0.35)" strokeWidth={3} />
+        <Path d={`M${x} 0 V${B}`} stroke="#F2C14E" strokeWidth={3} strokeDasharray="22 18" />
       </G>
 
       {trail.map((p, i) => {

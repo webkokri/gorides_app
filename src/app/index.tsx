@@ -47,7 +47,7 @@ export default function Splash() {
   return (
     <LinearGradient colors={['#0C0F20', '#14162C', '#2A1726']} locations={[0, 0.55, 1]} style={styles.root}>
       <StatusBar style="light" />
-      <View style={StyleSheet.absoluteFill}>
+      <View style={[StyleSheet.absoluteFill, { overflow: 'hidden' }]}>
         <SplashRoad width={W} height={H} cy={cy} />
       </View>
       <View style={[styles.logo, { top: cy - LOGO / 2, left: W / 2 - LOGO / 2, opacity: k, transform: [{ scale: 1.3 - 0.3 * k }] }]}>
