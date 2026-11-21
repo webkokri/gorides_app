@@ -17,8 +17,10 @@ type Option = { make: string; model: string; year?: number };
 const keyOf = (o: Option) => `${lc(o.make)}|${lc(o.model)}|${o.year ?? ''}`;
 
 /** Catalogue cars matching what was typed: best matches first, newest year first. */
-async function search(q: string): Promise<Option[]> {
-  const rows: VehicleModel[] = await vehicles.models(q.trim()).catch(() => []);
+async function search(q: string): Promise<Option[] | null> {
+  // null = the catalogue could not be reached (so the screen can say that, instead of "no matches")
+  const rows: VehicleModel[] | null = await vehicles.models(q.trim()).catch(() => null);
+  if (!rows) return null;
   const t = lc(q);
   const seen = new Set<string>();
   const out: Option[] = [];
@@ -40,14 +42,14 @@ async function search(q: string): Promise<Option[]> {
  */
 export function CarPicker({ value, onChange, showPlate }: { value: CarValue; onChange: (v: CarValue) => void; showPlate?: boolean }) {
   const [q, setQ] = useState('');
-  const [options, setOptions] = useState<{ q: string; list: Option[] }>({ q: '', list: [] });
+  const [options, setOptions] = useState<{ q: string; list: Option[]; failed?: boolean }>({ q: '', list: [] });
   const [manual, setManual] = useState(false);
   const chosen = !!value.make && !!value.model && !manual;
 
   useEffect(() => {
     if (chosen || manual || q.trim().length < 2) return;
     let live = true;
-    const t = setTimeout(() => search(q).then((list) => live && setOptions({ q, list })), 250);
+    const t = setTimeout(() => search(q).then((list) => live && setOptions({ q, list: list ?? [], failed: list === null })), 250);
     return () => {
       live = false;
       clearTimeout(t);
@@ -111,8 +113,8 @@ export function CarPicker({ value, onChange, showPlate }: { value: CarValue; onC
               ))}
             </View>
           ) : q.trim().length >= 2 ? (
-            <T size={12} color={C.muted}>
-              No matches yet.
+            <T size={12} color={options.q === q && options.failed ? C.bad : C.muted}>
+              {options.q === q && options.failed ? 'The car list could not be loaded right now. Tap "Enter it manually" below.' : 'No matches yet.'}
             </T>
           ) : null}
           <Pressable onPress={() => setManual(true)}>
