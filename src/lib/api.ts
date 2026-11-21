@@ -322,7 +322,7 @@ export const drivers = {
 };
 
 export const vehicles = {
-  models: (search?: string) => api<VehicleModel[]>('/vehicle-models', { query: { search }, ttl: 300000 }),
+  models: (search?: string) => api<VehicleModel[]>('/vehicle-models', { query: { search }, ttl: 300000, auth: false }),
 };
 
 export type DriverVehicle = {
