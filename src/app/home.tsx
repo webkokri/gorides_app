@@ -79,6 +79,7 @@ export default function Home() {
   const { open, isOwn } = useOpenRide();
   // rides you published yourself are not offered to you to book
   const shown = useMemo(() => near.filter((r) => !isOwn(r) && !!r.monthly === (kind === 'monthly')), [near, kind, isOwn]);
+  const bookable = useMemo(() => near.filter((r) => !isOwn(r)).length, [near, isOwn]);
   const monthlyCount = useMemo(() => near.filter((r) => !isOwn(r) && r.monthly).length, [near, isOwn]);
   const visible = shown.slice(0, limit);
   const remember = (from: string, to: string) => {
@@ -131,11 +132,11 @@ export default function Home() {
           <T w="display" size={30} color="#fff" style={{ marginTop: 2, lineHeight: 36 }}>
             Where are you going?
           </T>
-          {!nearLoading && near.length ? (
+          {!nearLoading && bookable ? (
             <View style={styles.live}>
               <View style={styles.liveDot} />
               <T w="bold" size={12} color="#fff">
-                {near.length} ride{near.length > 1 ? 's' : ''} leaving soon
+                {bookable} ride{bookable > 1 ? 's' : ''} you can book
               </T>
             </View>
           ) : null}
