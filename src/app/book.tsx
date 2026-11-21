@@ -48,12 +48,13 @@ export default function Book() {
   const isReturnRide = !!detail?.title?.endsWith('(Return)');
   const canRoundTrip = !local && !!detail?.is_round_trip && !!detail?.return_ride?.instances?.length;
   const pays: { method: 'wallet' | 'stripe'; badge: string; bg: string; t: string; s: string }[] = [
-    { method: 'wallet', badge: 'GO', bg: C.o, t: 'GORIDES Wallet', s: balance === null ? 'Checking balance…' : `Balance ${money(balance)}${quote ? ` · total ${money(quote.by_payment_method.wallet.total_charged * (tripType === 'round_trip' ? 2 : 1))}` : ''}` },
+    // the wallet is offered only when it holds money
+    ...((balance ?? 0) > 0 ? [{ method: 'wallet' as const, badge: 'GO', bg: C.o, t: 'GORIDES Wallet', s: balance === null ? 'Checking balance…' : `Balance ${money(balance)}${quote ? ` · total ${money(quote.by_payment_method.wallet.total_charged * (tripType === 'round_trip' ? 2 : 1))}` : ''}` }] : []),
     ...(stripeSupported ? [{ method: 'stripe' as const, badge: 'CARD', bg: '#1A1F71', t: 'Card or bank debit', s: quote ? `Adds a ${money(quote.by_payment_method.stripe.processing_fee_amount * (tripType === 'round_trip' ? 2 : 1))} Stripe processing fee · total ${money(quote.by_payment_method.stripe.total_charged * (tripType === 'round_trip' ? 2 : 1))}` : 'Secure checkout by Stripe · a processing fee is added' }] : []),
   ];
   // Pay-after-accept settles via wallet (see /bookings/:id/pay), so quote
   // with wallet math until the passenger actually picks Stripe.
-  const quoteMethod = needsPay ? pays[pay]?.method ?? 'wallet' : 'wallet';
+  const quoteMethod = needsPay ? pays[Math.min(pay, pays.length - 1)]?.method ?? 'wallet' : 'wallet';
   const charge = quote?.by_payment_method[quoteMethod];
   const baseShare = quote ? quote.base_amount : share.now;
   const serviceFee = charge?.service_fee_amount ?? 0;
@@ -77,7 +78,11 @@ export default function Book() {
     try {
       // payment is part of the booking call: wallet is charged immediately, card returns a PaymentIntent to confirm
       const requestFirst = !r.instant && !needsPay;
-      const method = requestFirst ? undefined : pays[pay].method;
+      const method = requestFirst ? undefined : pays[Math.min(pay, pays.length - 1)]?.method;
+      if (!requestFirst && !method) {
+        toast('Add funds to your wallet to pay for this ride.');
+        return;
+      }
       const res = await rides.book(r.instanceId, {
         seats_booked: s.seats,
         payment_method: method,
@@ -225,8 +230,13 @@ export default function Book() {
             <T w="bold" style={styles.h4}>
               Payment
             </T>
+            {!pays.length ? (
+              <T size={13} color={C.bad}>
+                Your wallet is empty and card payment is not available here. Add funds in Wallet to pay for this ride.
+              </T>
+            ) : null}
             {pays.map((p, i) => (
-              <Radio key={i} on={pay === i} onPress={() => setPay(i)} title={p.t} sub={p.s} badge={p.badge} badgeBg={p.bg} />
+              <Radio key={p.method} on={Math.min(pay, pays.length - 1) === i} onPress={() => setPay(i)} title={p.t} sub={p.s} badge={p.badge} badgeBg={p.bg} />
             ))}
             <T size={12} color={C.muted} style={{ marginTop: 8 }}>
               Always pay inside GORIDES. Never pay a driver directly or outside the app: we cannot track or protect those payments.
