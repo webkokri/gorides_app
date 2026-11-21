@@ -227,7 +227,7 @@ export default function RideDetails() {
 
         <View style={{ padding: 16 }}>
           {local && r.rideId ? <Btn label="Subscribe to this commute" kind="sec" small style={{ marginBottom: 10 }} onPress={() => router.push({ pathname: '/subscriptions', params: { rideId: String(r.rideId) } })} /> : null}
-          <Btn label="Report this ride" kind="out" small onPress={needLogin(() => router.push('/chat'))} />
+          <Btn label="Report this ride" kind="out" small onPress={needLogin(() => router.push({ pathname: '/chat', params: { ride: String(r.rideId ?? r.id), tag: `${r.from} → ${r.to}${r.day ? `, ${r.day}` : ''}${r.dep ? ` ${r.dep}` : ''}` } }))} />
         </View>
       </ScrollView>
       {isMine ? (

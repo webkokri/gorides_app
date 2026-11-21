@@ -242,6 +242,7 @@ export default function Booking() {
             <Btn label="Message" icon="chat" small onPress={() => router.push({ pathname: '/booking-chat', params: { id: String(bookingId) } })} />
           ) : null}
           {canBlock && other.id ? <Btn label={busy ? 'Please wait…' : blocked ? `Unblock ${other.name}` : `Block ${other.name}`} kind="out" small disabled={busy} onPress={toggleBlock} /> : null}
+          <Btn label="Report or get help with this ride" icon="help" kind="out" small onPress={() => router.push({ pathname: '/chat', params: { ride: String(b.ride_id ?? ''), booking: String(bookingId), tag: `${b.start_name ?? ''} → ${b.end_name ?? ''}${b.departure_date ? `, ${tripDate(b.departure_date)}` : ''}${b.departure_time ? ` ${b.departure_time.slice(0, 5)}` : ''}` } })} />
           {other.id ? <Btn label={`Report ${other.name}`} icon="alert" kind="out" small onPress={() => setShowReport(true)} /> : null}
           {blocked ? (
             <T size={12} color={C.muted}>

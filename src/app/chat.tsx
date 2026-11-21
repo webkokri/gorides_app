@@ -22,7 +22,9 @@ const SAFETY_POLL_MS = 15000;
 
 export default function Chat() {
   // `id` = an existing support ticket; no id = a new request (the first message opens the ticket)
-  const { id } = useLocalSearchParams<{ id?: string }>();
+  // a ride-related request also carries `ride` (the ride's number), `tag` (route and date, for the team to read) and, for a booking, `booking`
+  const { id, ride, tag, booking } = useLocalSearchParams<{ id?: string; ride?: string; tag?: string; booking?: string }>();
+  const rideTag = ride ? `Ride #${ride}${booking ? ` · Booking #${booking}` : ''}${tag ? ` · ${tag}` : ''}` : '';
   const { toast } = useStore();
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
@@ -94,7 +96,10 @@ export default function Chat() {
         await support.message(ticketId, v);
         await load(ticketId);
       } else {
-        const t = await support.open(v.slice(0, 60), v);
+        // the ride goes into the subject and the first message, so the support team sees which ride it is about straight away
+        const t = rideTag
+          ? await support.open(`[Ride #${ride}] ${tag ?? ''} - ${v}`.slice(0, 100), `${rideTag}\n\n${v}`, 'booking', booking ? Number(booking) : undefined)
+          : await support.open(v.slice(0, 60), v);
         setTicketId(t.id);
       }
       setText('');
@@ -126,6 +131,14 @@ export default function Chat() {
         </View>
         <View style={{ width: 42 }} />
       </Row>
+      {rideTag ? (
+        <View style={styles.tag}>
+          <Icon name="car" size={15} color={C.oDeep} />
+          <T w="bold" size={12} color={C.oDeep} numberOfLines={2} style={{ flex: 1 }}>
+            About: {rideTag}
+          </T>
+        </View>
+      ) : null}
       <View style={{ flex: 1 }}>
         <ScrollView ref={scroller} contentContainerStyle={{ padding: 16, gap: 8 }} onContentSizeChange={() => scroller.current?.scrollToEnd({ animated: true })}>
           {msgs.map((m) => (
@@ -157,6 +170,7 @@ export default function Chat() {
 }
 
 const styles = StyleSheet.create({
+  tag: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 16, marginTop: 4, padding: 10, borderRadius: 12, backgroundColor: C.oSoft, borderWidth: 1, borderColor: C.oTint },
   top: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 10, gap: 10 },
   dot: { width: 7, height: 7, borderRadius: 4 },
   pin: { marginHorizontal: 16, padding: 12, borderRadius: 14, backgroundColor: C.card, borderWidth: 1, borderColor: C.line, gap: 10 },
