@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import Svg, { Circle, Defs, G, Path, RadialGradient, Rect, Stop } from 'react-native-svg';
+import Svg, { Circle, Defs, G, Path, RadialGradient, Stop } from 'react-native-svg';
 import { CarDefs, TopSedan } from '../cars';
 import { ease, seeded, useTicker } from '../../lib/anim';
 
