@@ -139,7 +139,7 @@ export function Avatar({ name, size = 44, verified = true, ring, uri }: { name: 
   return (
     <View style={[{ width: size, height: size, borderRadius: size / 2, backgroundColor: col, alignItems: 'center', justifyContent: 'center' }, ring && { borderWidth: 2, borderColor: '#fff' }]}>
       {uri ? (
-        <Image source={{ uri }} style={{ width: size, height: size, borderRadius: size / 2 }} />
+        <Image source={{ uri }} style={{ width: size, height: size, borderRadius: size / 2 }} cachePolicy="memory-disk" transition={120} recyclingKey={uri} />
       ) : (
         <T w="xbold" size={Math.round(size * 0.36)} color="#fff">
           {ini}
