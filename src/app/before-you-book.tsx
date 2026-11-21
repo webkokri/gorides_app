@@ -6,7 +6,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon, IconName } from '../components/Icon';
 import { Btn, Card, Row, Screen, T, Toggle, TopBar } from '../components/ui';
 import { goBack } from '../lib/nav';
+import { isUnavailable, users } from '../lib/api';
+import { useStore } from '../store';
 import { C } from '../theme';
+
+// bump this whenever the three rules above change, so the saved agreement says which wording was agreed to
+const RULES_VERSION = 'v1-2026-11';
 
 const RULES: { icon: IconName; tone: string; bg: string; title: string; body: string }[] = [
   {
@@ -35,7 +40,24 @@ const RULES: { icon: IconName; tone: string; bg: string; title: string; body: st
 /** A short stop before booking: three plain rules, and a switch to confirm them. Booking continues only once the switch is on. */
 export default function BeforeYouBook() {
   const [agree, setAgree] = useState(false);
+  const [busy, setBusy] = useState(false);
   const insets = useSafeAreaInsets();
+  const { toast } = useStore();
+
+  // the agreement is saved on the person's account (date and rules version) before the booking screen opens
+  const next = async () => {
+    setBusy(true);
+    try {
+      await users.acceptBookingRules(RULES_VERSION);
+      router.replace('/book');
+    } catch (e) {
+      // a server that does not have this feature yet must not stop people booking; any other failure does, so the record is never lost
+      if (isUnavailable(e)) router.replace('/book');
+      else toast(e instanceof Error ? e.message : 'Could not save your agreement. Please try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <Screen bottom={false}>
@@ -71,7 +93,7 @@ export default function BeforeYouBook() {
           </T>
           <Toggle value={agree} onChange={setAgree} />
         </Row>
-        <Btn label="Continue to book" icon="chev" disabled={!agree} onPress={() => router.replace('/book')} />
+        <Btn label={busy ? 'Saving…' : 'Continue to book'} icon="chev" disabled={!agree || busy} onPress={next} />
       </View>
     </Screen>
   );
