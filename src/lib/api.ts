@@ -175,7 +175,7 @@ export const users = {
   blocks: () => api<BlockedUser[]>('/users/blocks'),
   updateAccount: (b: Partial<{ first_name: string; last_name: string; mobile_number: string; city: string; province: string; address: string; postal_code: string }>) => api<ApiUser>('/users/account', { method: 'PUT', body: b }),
   changePassword: (current_password: string, new_password: string) => api('/users/change-password', { method: 'POST', body: { current_password, new_password } }),
-  deleteAccount: (password: string) => api('/users/account', { method: 'DELETE', body: { password } }),
+  deleteAccount: (password?: string) => api('/users/account', { method: 'DELETE', body: password ? { password } : { confirm: 'DELETE' } }),
   registerDeviceToken: (token: string, platform: 'ios' | 'android') => api('/users/device-token', { method: 'POST', body: { token, platform } }),
   unregisterDeviceToken: (token: string) => api('/users/device-token', { method: 'DELETE', body: { token } }),
   /** Flags another user's profile/behaviour for staff review -- separate from block, which just silences them with no review. */

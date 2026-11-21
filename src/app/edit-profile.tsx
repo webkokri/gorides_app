@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
+import { Alert, Pressable, ScrollView, View } from 'react-native';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -72,12 +72,19 @@ export default function EditProfile() {
     });
   };
   const remove = () => {
-    if (!del) return toast('Enter your password to deactivate');
-    return run(async () => {
-      await users.deleteAccount(del);
-      await signOut();
-      router.replace('/onboarding');
-    });
+    Alert.alert('Delete your account?', 'This permanently erases your profile, saved bank accounts and sign-in. It cannot be undone. Rides or bookings that are still active must be finished or cancelled first.', [
+      { text: 'Keep my account', style: 'cancel' },
+      {
+        text: 'Delete forever',
+        style: 'destructive',
+        onPress: () =>
+          run(async () => {
+            await users.deleteAccount(del);
+            await signOut();
+            router.replace('/onboarding');
+          }),
+      },
+    ]);
   };
 
   return (
@@ -119,12 +126,12 @@ export default function EditProfile() {
         <Field label="New password" value={next} onChangeText={setNext} secureTextEntry />
         <Btn label="Change password" kind="out" disabled={busy} onPress={changePw} />
 
-        <Section title="Deactivate account" />
+        <Section title="Delete account" />
         <T size={13} color={C.muted}>
-          This deactivates your account. Enter your password to confirm.
+          Permanently deletes your account and personal details. Enter your password to confirm. If you signed in with Google or Apple, leave it empty (you must have signed in within the last 15 minutes).
         </T>
         <Field label="Password" value={del} onChangeText={setDel} secureTextEntry />
-        <Btn label="Deactivate my account" kind="out" disabled={busy} onPress={remove} />
+        <Btn label="Delete my account" kind="out" disabled={busy} onPress={remove} />
       </ScrollView>
     </Screen>
   );

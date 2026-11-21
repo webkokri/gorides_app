@@ -82,6 +82,7 @@ export default function Profile() {
     { icon: 'help', title: 'Help centre', onPress: () => router.push('/help') },
     { icon: 'shield', title: 'Disclaimer and privacy', sub: 'How GORIDES works and what we are not liable for', onPress: () => router.push('/disclaimer') },
     { icon: 'sliders', title: 'Account settings', sub: 'Name, phone, password', onPress: () => router.push('/edit-profile') },
+    { icon: 'sliders', title: 'Delete account', sub: 'Permanently erase your account and data', danger: true, onPress: () => router.push('/edit-profile') },
     { icon: 'logout', title: 'Sign out', danger: true, onPress: async () => { await signOut(); router.replace('/onboarding'); } },
   ];
 
