@@ -136,7 +136,9 @@ export default function Results() {
     };
   }, [key, d, s.from, s.to, s.fromPlace, s.toPlace, s.pax]);
 
-  const all = tab === "local" ? res.local : res.long;
+  // a driver's own published rides are never offered to them: they can book every other ride, but not their own
+  const mineless = { local: res.local.filter((r) => !isOwn(r)), long: res.long.filter((r) => !isOwn(r)) };
+  const all = tab === "local" ? mineless.local : mineless.long;
   const rides = useMemo(() => {
     let rs = all;
     if (filters.has("instant")) rs = rs.filter((r) => r.instant);
@@ -223,12 +225,12 @@ export default function Results() {
           options={[
             {
               v: "local",
-              label: `Local Rides${loading ? "" : ` (${res.local.length})`}`,
+              label: `Local Rides${loading ? "" : ` (${mineless.local.length})`}`,
               icon: "pin",
             },
             {
               v: "long",
-              label: `Long Routes${loading ? "" : ` (${res.long.length})`}`,
+              label: `Long Routes${loading ? "" : ` (${mineless.long.length})`}`,
               icon: "route",
             },
           ]}
@@ -353,7 +355,7 @@ export default function Results() {
                 <T size={14} color={C.muted}>
                   {all.length
                     ? "Try removing a filter or picking another day."
-                    : (tab === "local" ? res.long.length : res.local.length)
+                    : (tab === "local" ? mineless.long.length : mineless.local.length)
                       ? `Try the ${tab === "local" ? "Long Routes" : "Local Rides"} tab, or pick another day.`
                       : "Try another day or a wider area."}
                 </T>
