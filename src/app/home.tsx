@@ -2,12 +2,13 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DateSheet, PaxSheet, PlaceSheet } from '../components/Pickers';
 import { TabBar, TAB_SPACE } from '../components/TabBar';
 import { Icon, IconName } from '../components/Icon';
 import { Logo } from '../components/Logo';
-import { Btn, Card, IconBtn, Section, Seg, T } from '../components/ui';
+import { Btn, Card, Section, Seg, T } from '../components/ui';
 import { rides as ridesApi } from '../lib/api';
 import { getItem, setItem } from '../lib/storage';
 import { city, fmtDay, isoDate, today } from '../lib/format';
@@ -105,24 +106,40 @@ export default function Home() {
 
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
-      <StatusBar style="dark" />
+      <StatusBar style="light" />
       <ScrollView contentContainerStyle={{ paddingBottom: TAB_SPACE }} showsVerticalScrollIndicator={false}>
-        <View style={[styles.hd, { paddingTop: insets.top + 10 }]}>
-          <Logo size={34} />
-          <T w="display" size={20} style={{ flex: 1, letterSpacing: 0.5 }}>
-            GORIDES
-          </T>
-          <IconBtn name="bell" onPress={needLogin(() => router.push('/notifications'))} label="Notifications" />
-          <IconBtn name="help" onPress={() => router.push('/help')} label="Help" />
-        </View>
-        <View style={{ paddingHorizontal: 20, paddingTop: 14, paddingBottom: 4 }}>
-          <T size={14} color={C.muted}>
+        <LinearGradient colors={['#FFA24F', C.o, C.oDeep]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.hero, { paddingTop: insets.top + 10 }]}>
+          <View style={styles.blobA} />
+          <View style={styles.blobB} />
+          <View style={styles.hd}>
+            <View style={styles.logoWrap}>
+              <Logo size={30} />
+            </View>
+            <T w="display" size={20} color="#fff" style={{ flex: 1, letterSpacing: 0.5 }}>
+              GORIDES
+            </T>
+            <Pressable style={styles.glass} onPress={needLogin(() => router.push('/notifications'))} accessibilityLabel="Notifications" hitSlop={6}>
+              <Icon name="bell" size={20} color="#fff" />
+            </Pressable>
+            <Pressable style={styles.glass} onPress={() => router.push('/help')} accessibilityLabel="Help" hitSlop={6}>
+              <Icon name="help" size={20} color="#fff" />
+            </Pressable>
+          </View>
+          <T size={14} color="rgba(255,255,255,0.9)" style={{ marginTop: 22 }}>
             {greet}
           </T>
-          <T w="display" size={26} style={{ marginTop: 2 }}>
+          <T w="display" size={30} color="#fff" style={{ marginTop: 2, lineHeight: 36 }}>
             Where are you going?
           </T>
-        </View>
+          {!nearLoading && near.length ? (
+            <View style={styles.live}>
+              <View style={styles.liveDot} />
+              <T w="bold" size={12} color="#fff">
+                {near.length} ride{near.length > 1 ? 's' : ''} leaving soon
+              </T>
+            </View>
+          ) : null}
+        </LinearGradient>
 
         <Card style={styles.search}>
           <View style={styles.sf}>
@@ -262,14 +279,16 @@ function FieldRow({ k, v, onPress, dot, filled, icon, right, placeholder, border
 }
 
 const styles = StyleSheet.create({
-  hero: { paddingHorizontal: 20, paddingBottom: 110, borderBottomLeftRadius: 34, borderBottomRightRadius: 34, overflow: 'hidden' },
-  glowO: { position: 'absolute', right: -120, bottom: -140, width: 360, height: 300, borderRadius: 200, backgroundColor: C.o, opacity: 0.35 },
-  glowP: { position: 'absolute', left: -120, top: -120, width: 280, height: 240, borderRadius: 160, backgroundColor: '#5A46C8', opacity: 0.25 },
-  hd: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 20 },
-  live: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', marginTop: 12, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)' },
-  liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#3DDC97' },
+  hero: { paddingHorizontal: 20, paddingBottom: 74, borderBottomLeftRadius: 34, borderBottomRightRadius: 34, overflow: 'hidden' },
+  blobA: { position: 'absolute', right: -70, top: -60, width: 240, height: 240, borderRadius: 120, backgroundColor: 'rgba(255,255,255,0.14)' },
+  blobB: { position: 'absolute', left: -90, bottom: -110, width: 260, height: 260, borderRadius: 130, backgroundColor: 'rgba(255,255,255,0.10)' },
+  hd: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  logoWrap: { width: 40, height: 40, borderRadius: 13, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
+  glass: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.22)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)', alignItems: 'center', justifyContent: 'center' },
+  live: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', marginTop: 14, paddingHorizontal: 11, paddingVertical: 6, borderRadius: 999, backgroundColor: 'rgba(0,0,0,0.18)' },
+  liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#7CFFB5' },
   // the search card is the main thing on Home, so it carries an orange outline and a soft orange shadow
-  search: { marginTop: 10, marginHorizontal: 16, padding: 14, borderWidth: 2, borderColor: C.o, shadowColor: C.o, shadowOpacity: 0.22, shadowRadius: 16, shadowOffset: { width: 0, height: 6 }, elevation: 8 },
+  search: { marginTop: -50, marginHorizontal: 16, padding: 14, shadowColor: '#7A3500', shadowOpacity: 0.22, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 10 },
   sf: { borderWidth: 1, borderColor: C.line, borderRadius: 16, overflow: 'hidden' },
   fl: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 11, minHeight: 58, backgroundColor: C.card },
   fdot: { width: 12, height: 12, borderRadius: 6, borderWidth: 3, borderColor: C.o, marginHorizontal: 4 },
