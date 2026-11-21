@@ -114,7 +114,7 @@ export default function Home() {
           <View style={styles.blobB} />
           <View style={styles.hd}>
             <View style={styles.logoWrap}>
-              <Logo size={30} />
+              <Logo size={26} />
             </View>
             <T w="display" size={20} color="#fff" style={{ flex: 1, letterSpacing: 0.5 }}>
               GORIDES
@@ -126,10 +126,10 @@ export default function Home() {
               <Icon name="help" size={20} color="#fff" />
             </Pressable>
           </View>
-          <T size={14} color="rgba(255,255,255,0.9)" style={{ marginTop: 22 }}>
+          <T size={13} color="rgba(255,255,255,0.9)" style={{ marginTop: 10 }}>
             {greet}
           </T>
-          <T w="display" size={30} color="#fff" style={{ marginTop: 2, lineHeight: 36 }}>
+          <T w="display" size={21} color="#fff" style={{ marginTop: 0, lineHeight: 26 }}>
             Where are you going?
           </T>
           {!nearLoading && bookable ? (
@@ -280,16 +280,16 @@ function FieldRow({ k, v, onPress, dot, filled, icon, right, placeholder, border
 }
 
 const styles = StyleSheet.create({
-  hero: { paddingHorizontal: 20, paddingBottom: 74, borderBottomLeftRadius: 34, borderBottomRightRadius: 34, overflow: 'hidden' },
+  hero: { paddingHorizontal: 20, paddingBottom: 58, borderBottomLeftRadius: 28, borderBottomRightRadius: 28, overflow: 'hidden' },
   blobA: { position: 'absolute', right: -70, top: -60, width: 240, height: 240, borderRadius: 120, backgroundColor: 'rgba(255,255,255,0.14)' },
   blobB: { position: 'absolute', left: -90, bottom: -110, width: 260, height: 260, borderRadius: 130, backgroundColor: 'rgba(255,255,255,0.10)' },
   hd: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  logoWrap: { width: 40, height: 40, borderRadius: 13, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
-  glass: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.22)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)', alignItems: 'center', justifyContent: 'center' },
-  live: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', marginTop: 14, paddingHorizontal: 11, paddingVertical: 6, borderRadius: 999, backgroundColor: 'rgba(0,0,0,0.18)' },
+  logoWrap: { width: 36, height: 36, borderRadius: 12, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
+  glass: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.22)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)', alignItems: 'center', justifyContent: 'center' },
+  live: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', marginTop: 8, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: 'rgba(0,0,0,0.18)' },
   liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#7CFFB5' },
   // the search card is the main thing on Home, so it carries an orange outline and a soft orange shadow
-  search: { marginTop: -50, marginHorizontal: 16, padding: 14, shadowColor: '#7A3500', shadowOpacity: 0.22, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 10 },
+  search: { marginTop: -38, marginHorizontal: 16, padding: 14, shadowColor: '#7A3500', shadowOpacity: 0.22, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 10 },
   sf: { borderWidth: 1, borderColor: C.line, borderRadius: 16, overflow: 'hidden' },
   fl: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 11, minHeight: 58, backgroundColor: C.card },
   fdot: { width: 12, height: 12, borderRadius: 6, borderWidth: 3, borderColor: C.o, marginHorizontal: 4 },
