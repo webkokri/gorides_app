@@ -11,11 +11,16 @@ import { Avatar, Card, Tag, T } from './ui';
 function RideCardBase({ ride, local, onOpen, isOwn, showDate }: { ride: Ride; local: boolean; onOpen: (r: Ride) => void; isOwn?: boolean; showDate?: boolean }) {
   const full = ride.seats === 0;
   const seatColor = full ? C.muted : ride.seats === 1 ? C.warn : C.good;
-  const hasHead = !!(showDate && ride.day) || isOwn || ride.monthly || ride.away || ride.instant || ride.tags.includes('Round trip');
   return (
-    <Card style={[styles.card, full && { opacity: 0.55 }]} onPress={() => onOpen(ride)}>
-      {hasHead ? (
+    <Card style={[styles.card, { borderLeftColor: local ? C.o : '#2F5DB8' }, full && { opacity: 0.55 }]} onPress={() => onOpen(ride)}>
+      {(
         <View style={styles.head}>
+          <View style={[styles.kind, { backgroundColor: local ? C.oSoft : '#E8EEFB' }]}>
+            <Icon name={local ? 'pin' : 'route'} size={11} color={local ? C.oDeep : '#2F5DB8'} />
+            <T w="xbold" size={10} color={local ? C.oDeep : '#2F5DB8'} style={{ letterSpacing: 0.4 }}>
+              {local ? 'LOCAL RIDE' : 'LONG ROUTE'}
+            </T>
+          </View>
           {showDate && ride.day ? (
             <View style={styles.date}>
               <Icon name="calendar" size={12} color={C.oDeep} />
@@ -31,7 +36,7 @@ function RideCardBase({ ride, local, onOpen, isOwn, showDate }: { ride: Ride; lo
           {ride.away ? <Tag label={ride.away} icon="pin" /> : null}
           {ride.tags.includes('Round trip') ? <Tag label="Round trip" /> : null}
         </View>
-      ) : null}
+      )}
       <View style={styles.tm}>
         <View style={{ flex: 1, gap: 1 }}>
           <Stop time={ride.dep} place={ride.from} sub={ride.fromS} />
@@ -44,10 +49,10 @@ function RideCardBase({ ride, local, onOpen, isOwn, showDate }: { ride: Ride; lo
           <Stop time={ride.arr} place={ride.to} sub={ride.toS} end />
         </View>
         <View style={styles.price}>
-          <T w="xbold" size={18} color={C.oDeep} style={full ? { textDecorationLine: 'line-through' } : undefined}>
+          <T w="xbold" size={15} color={C.oDeep} style={full ? { textDecorationLine: 'line-through' } : undefined}>
             ${seatShare(ride, 1).now.toFixed(2)}
           </T>
-          <T size={10} color={C.muted}>
+          <T size={9} color={C.muted}>
             {local ? 'per rider' : 'per seat'}
           </T>
         </View>
@@ -105,8 +110,9 @@ function Stop({ time, place, sub, end }: { time: string; place: string; sub: str
 const styles = StyleSheet.create({
   card: { padding: 12, paddingBottom: 0, gap: 8, overflow: 'hidden', borderLeftWidth: 4, borderLeftColor: C.o },
   head: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 5 },
+  kind: { flexDirection: 'row', alignItems: 'center', gap: 3, borderRadius: 999, paddingHorizontal: 7, paddingVertical: 2 },
   date: { flexDirection: 'row', alignItems: 'center', gap: 4, marginRight: 2 },
-  price: { alignItems: 'center', alignSelf: 'flex-start', backgroundColor: C.oSoft, borderRadius: 12, paddingHorizontal: 9, paddingVertical: 5 },
+  price: { alignItems: 'center', alignSelf: 'flex-start', backgroundColor: C.oSoft, borderRadius: 10, paddingHorizontal: 7, paddingVertical: 3 },
   seats: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3 },
   tm: { flexDirection: 'row', gap: 10 },
   mid: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
