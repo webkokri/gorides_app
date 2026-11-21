@@ -258,7 +258,7 @@ export default function Wallet() {
         </Row>
         <Field label="Amount (CAD, at least $5)" value={topupAmount} onChangeText={setTopupAmount} keyboardType="decimal-pad" />
         <T size={12} color={C.muted}>
-          Paid by card or bank debit through Stripe. The funds land in your wallet as soon as the payment goes through.
+          Paid by card or bank debit through Stripe. There is no extra fee: you are charged exactly the amount you enter and the same amount is added to your wallet. Paying a ride from your wallet has no card fee either.
         </T>
         <Btn label={busy ? 'Processing…' : `Pay${Number(topupAmount) > 0 ? ` ${money(Number(topupAmount))}` : ''} and add funds`} disabled={busy} onPress={topup} />
       </Sheet>

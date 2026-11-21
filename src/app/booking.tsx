@@ -315,7 +315,7 @@ export default function Booking() {
           }
         }}
       />
-      <PayBookingSheet visible={showPay} bookingId={bookingId} amount={Number(b.total_charged ?? b.total_price ?? 0)} onClose={() => setShowPay(false)} onPaid={reload} />
+      <PayBookingSheet visible={showPay} bookingId={bookingId} instanceId={b.ride_instance_id} amount={Number(b.total_charged ?? b.total_price ?? 0)} onClose={() => setShowPay(false)} onPaid={reload} />
       <ReportUserSheet visible={showReport} userId={other.id} userName={other.name} bookingId={bookingId} onClose={() => setShowReport(false)} />
       <ConfirmCancel
         visible={confirmCancel}

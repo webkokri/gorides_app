@@ -49,7 +49,7 @@ export default function Book() {
   const canRoundTrip = !local && !!detail?.is_round_trip && !!detail?.return_ride?.instances?.length;
   const pays: { method: 'wallet' | 'stripe'; badge: string; bg: string; t: string; s: string }[] = [
     { method: 'wallet', badge: 'GO', bg: C.o, t: 'GORIDES Wallet', s: balance === null ? 'Checking balance…' : `Balance ${money(balance)}${quote ? ` · total ${money(quote.by_payment_method.wallet.total_charged * (tripType === 'round_trip' ? 2 : 1))}` : ''}` },
-    ...(stripeSupported ? [{ method: 'stripe' as const, badge: 'CARD', bg: '#1A1F71', t: 'Card or bank debit', s: `Secure checkout by Stripe${quote ? ` · total ${money(quote.by_payment_method.stripe.total_charged * (tripType === 'round_trip' ? 2 : 1))} incl. card fee` : ''}` }] : []),
+    ...(stripeSupported ? [{ method: 'stripe' as const, badge: 'CARD', bg: '#1A1F71', t: 'Card or bank debit', s: quote ? `Adds a ${money(quote.by_payment_method.stripe.processing_fee_amount * (tripType === 'round_trip' ? 2 : 1))} Stripe processing fee · total ${money(quote.by_payment_method.stripe.total_charged * (tripType === 'round_trip' ? 2 : 1))}` : 'Secure checkout by Stripe · a processing fee is added' }] : []),
   ];
   // Pay-after-accept settles via wallet (see /bookings/:id/pay), so quote
   // with wallet math until the passenger actually picks Stripe.
