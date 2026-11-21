@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Redirect, router } from 'expo-router';
 import { goBack } from '../lib/nav';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon, IconName } from '../components/Icon';
+import { FeatureIcon, rideFeatures } from '../components/RideFeatures';
 import { Avatar, Btn, Card, IconBtn, Row, T, Tag } from '../components/ui';
 import { fmtLong, money, t12 } from '../lib/format';
 import { useAuth } from '../auth';
@@ -98,10 +99,7 @@ export default function RideDetails() {
         </Row>
       </Card>
     ) : null;
-  const prefs: [IconName, string][] = [
-    [r.pets ? 'paw' : 'x', r.pets ? 'Pets welcome' : 'No pets'],
-    ...(r.tags.map((t) => ['check', t]) as [IconName, string][]),
-  ];
+  const feats = rideFeatures(r);
 
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
@@ -212,15 +210,19 @@ export default function RideDetails() {
             Ride preferences
           </T>
           <View style={styles.prefs}>
-            {prefs.map(([ic, t]) => (
-              <Row key={t} style={{ width: '48%', gap: 8 }}>
-                <Icon name={ic} size={18} color={C.oDeep} />
-                <T w="semi" size={13} color={C.ink2}>
-                  {t}
-                </T>
-              </Row>
+            {feats.map((f) => (
+              <Pressable key={f.icon} onPress={() => toast(f.label)} accessibilityRole="button" accessibilityLabel={f.label} style={{ alignItems: 'center' }}>
+                <FeatureIcon {...f} size={48} />
+              </Pressable>
             ))}
           </View>
+          {r.tags.length ? (
+            <Row style={{ gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+              {r.tags.map((t) => (
+                <Tag key={t} label={t} />
+              ))}
+            </Row>
+          ) : null}
         </Card>
 
         <View style={{ padding: 16 }}>
@@ -269,6 +271,6 @@ const styles = StyleSheet.create({
   blk: { marginHorizontal: 16, marginTop: 14, padding: 16 },
   h4: { marginBottom: 12 },
   carIc: { width: 42, height: 42, borderRadius: 14, backgroundColor: C.oSoft, alignItems: 'center', justifyContent: 'center' },
-  prefs: { flexDirection: 'row', flexWrap: 'wrap', rowGap: 12, justifyContent: 'space-between' },
+  prefs: { flexDirection: 'row', flexWrap: 'wrap', rowGap: 12, justifyContent: 'space-between', paddingVertical: 4 },
   sticky: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 16, paddingTop: 12, backgroundColor: C.card, borderTopWidth: 1, borderTopColor: C.line },
 });
