@@ -55,7 +55,7 @@ export function RideReminders() {
   }, [user]);
   useEffect(() => {
     load();
-    const t = setInterval(load, 5 * 60000);
+    const t = setInterval(() => AppState.currentState === 'active' && load(), 5 * 60000);
     const sub = AppState.addEventListener('change', (st) => st === 'active' && load());
     return () => {
       clearInterval(t);

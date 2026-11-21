@@ -42,7 +42,7 @@ export function ActiveTripBar() {
   }, [user]);
   useEffect(() => {
     const first = setTimeout(load, 500);
-    const t = setInterval(load, 60000);
+    const t = setInterval(() => AppState.currentState === 'active' && load(), 60000);
     const sub = AppState.addEventListener('change', (st) => st === 'active' && load());
     return () => {
       clearTimeout(first);

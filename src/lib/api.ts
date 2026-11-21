@@ -114,16 +114,22 @@ async function send<T>(path: string, { method = 'GET', body, query, auth = true 
         .join('&')
     : '';
   let res: Response;
+  // a request that gets no answer (weak signal, sleeping server) is cancelled after 25 s, so screens show an error with Retry and never wait forever
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 25000);
   try {
     res = await fetch(`${API_URL}${path}${qs ? `?${qs}` : ''}`, {
       method,
       headers: { 'Content-Type': 'application/json', ...(auth && token ? { Authorization: `Bearer ${token}` } : {}) },
       body: body === undefined ? undefined : JSON.stringify(body),
+      signal: ctl.signal,
     });
   } catch {
-    throw new ApiError('Network error. Check your connection.', 0);
+    clearTimeout(timer);
+    throw new ApiError(ctl.signal.aborted ? 'The connection is slow or lost. Please try again.' : 'Network error. Check your connection.', 0);
   }
   if (res.status === 429) {
+    clearTimeout(timer);
     // The server is momentarily busy: quietly wait a few seconds and try again, so the person never has to see it.
     const wait = Number(res.headers.get('retry-after'));
     if (busyTries < 3) {
@@ -134,6 +140,7 @@ async function send<T>(path: string, { method = 'GET', body, query, auth = true 
     throw new ApiError('The service is busy right now. Please try again in a moment.', 429);
   }
   const json = await res.json().catch(() => null);
+  clearTimeout(timer);
   if (res.status === 401 && auth && token && !retried && (await refreshSession())) return send<T>(path, { method, body, query, auth }, true);
   // a 404 that is not JSON is the web server's own "page not found": the endpoint is not deployed
   if (res.status === 404 && json === null) throw new ApiError(UNAVAILABLE, 404);
