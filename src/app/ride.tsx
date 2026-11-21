@@ -100,9 +100,8 @@ export default function RideDetails() {
       </Card>
     ) : null;
   const feats = rideFeatures(r);
-  // the amenities are the icons above; only other tags (like Round trip) are shown as text
-  const AMENITY_TAGS = ['Pets OK', 'Winter tires', 'Bikes OK', 'Skis and snowboards'];
-  const extraTags = r.tags.filter((t) => !AMENITY_TAGS.includes(t));
+  // amenities, luggage size and back-seat limit are the icons above (the badge shows S/M/L and 2/3); only the round-trip tag stays as text
+  const extraTags = r.tags.filter((t) => t === 'Round trip');
 
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
