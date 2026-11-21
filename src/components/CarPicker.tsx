@@ -4,6 +4,7 @@ import { Field } from './Field';
 import { Icon } from './Icon';
 import { Chip, Row, T } from './ui';
 import { vehicles, VehicleModel } from '../lib/api';
+import { searchCatalog } from '../lib/carCatalog';
 import { C } from '../theme';
 
 export type CarValue = { make: string; model: string; year: string; color: string; plate: string };
@@ -19,8 +20,10 @@ const keyOf = (o: Option) => `${lc(o.make)}|${lc(o.model)}|${o.year ?? ''}`;
 /** Catalogue cars matching what was typed: best matches first, newest year first. */
 async function search(q: string): Promise<Option[] | null> {
   // null = the catalogue could not be reached (so the screen can say that, instead of "no matches")
-  const rows: VehicleModel[] | null = await vehicles.models(q.trim()).catch(() => null);
-  if (!rows) return null;
+  const fromServer: VehicleModel[] | null = await vehicles.models(q.trim()).catch(() => null);
+  // the server's catalogue first; the built-in list of common cars when the server cannot be reached or has nothing for this
+  const rows: VehicleModel[] = fromServer?.length ? fromServer : searchCatalog(q).map((c, i) => ({ id: -i - 1, make: c.make, model: c.model }) as VehicleModel);
+  if (!fromServer && !rows.length) return null;
   const t = lc(q);
   const seen = new Set<string>();
   const out: Option[] = [];
